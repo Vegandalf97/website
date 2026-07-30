@@ -131,7 +131,7 @@
 
   <form id="zettelForm">
     <input type="text" id="nameFeld" placeholder="Dein Name" maxlength="30">
-    <input type="text" id="nachrichtFeld" placeholder="Deine Nachricht" maxlength="1000">
+    <input type="text" id="nachrichtFeld" placeholder="Deine Nachricht" maxlength="100">
     <button type="submit" id="sendenButton">Anpinnen</button>
     <button type="button" id="loeschenAlle">Alle löschen</button>
   </form>
@@ -151,8 +151,7 @@
     const sendenButton = document.querySelector('#sendenButton');
     const loeschenAlleButton = document.querySelector('#loeschenAlle');
 
-    // Kein localStorage mehr - die Daten leben jetzt auf dem Server.
-    // Diese Liste ist nur noch eine Kopie zum Anzeigen.
+    // Die Daten leben auf dem Server. Diese Liste ist nur eine Kopie zum Anzeigen.
     let zettelListe = [];
 
 
@@ -162,23 +161,20 @@
 
 
     // ===== 2. Zettel vom Server holen =====
-    // "async" heisst: in dieser Funktion darf gewartet werden.
     async function zettelHolen() {
       try {
-        // "await" wartet, bis der Server geantwortet hat
         const antwort = await fetch('/api/zettel');
 
         if (!antwort.ok) {
           throw new Error('Server antwortet mit Status ' + antwort.status);
         }
 
-        zettelListe = await antwort.json();   // JSON in echte Daten umwandeln
+        zettelListe = await antwort.json();
         statusSetzen('');
         anzeigen();
 
       } catch (fehler) {
-        // Landet hier, wenn der Server aus ist oder einen Fehler meldet
-        statusSetzen('Keine Verbindung zum Server. Läuft er noch?');
+        statusSetzen('Keine Verbindung zum Server.');
         console.error(fehler);
       }
     }
@@ -198,14 +194,13 @@
         const daten = await antwort.json();
 
         if (!antwort.ok) {
-          // Der Server hat abgelehnt und sagt auch warum
           statusSetzen(daten.fehler || 'Der Zettel wurde abgelehnt.');
           return;
         }
 
         nachrichtFeld.value = '';
         nachrichtFeld.focus();
-        await zettelHolen();                  // frische Liste holen
+        await zettelHolen();
 
       } catch (fehler) {
         statusSetzen('Konnte nicht senden. Server erreichbar?');
@@ -237,7 +232,7 @@
     }
 
 
-    // ===== 5. Anzeigen (fast unverändert) =====
+    // ===== 5. Anzeigen =====
     function anzeigen() {
       pinnwand.innerHTML = '';
 
@@ -267,7 +262,6 @@
         const loeschen = document.createElement('button');
         loeschen.className = 'loeschen';
         loeschen.textContent = '×';
-        // Jetzt über die ID vom Server, nicht mehr über die Position
         loeschen.addEventListener('click', function () {
           zettelLoeschen(eintrag.id);
         });
@@ -303,11 +297,9 @@
     });
 
 
-    // ===== 7. Start: laden und alle 5 Sekunden aktualisieren =====
+    // ===== 7. Start: laden und alle 3 Sekunden aktualisieren =====
     zettelHolen();
-
-    // Damit Zettel von Freunden von selbst auftauchen
-    setInterval(zettelHolen, 5000);
+    setInterval(zettelHolen, 3000);
   </script>
 
 </body>
