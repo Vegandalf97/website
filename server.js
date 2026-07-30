@@ -6,7 +6,7 @@ const fs = require('fs');                  // fs = filesystem, Dateien lesen/sch
 const crypto = require('crypto');          // für zufällige IDs
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 // Hier landen die Zettel dauerhaft
 const DATEI = path.join(__dirname, 'zettel.json');
