@@ -3,19 +3,19 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Unsere Pinnwand</title>
+  <title>Wall of shame</title>
 
   <style>
     body {
       font-family: Arial, sans-serif;
-      background-color: #f4e4c1;
+      background-color: #e0eea0;
       margin: 0;
       padding: 30px;
     }
 
     h1 {
       text-align: center;
-      color: #5a3e2b;
+      color: #ff9900;
     }
 
     form {
@@ -80,8 +80,10 @@
 
     .gelb  { background-color: #f0e118; }
     .gruen { background-color: #13ff13; }
-    .blau  { background-color: #a8d8ff; }
-    .lila  { background-color: #e0b8ff; }
+    .blau  { background-color: #229cff; }
+    .lila  { background-color: #9716fa; }
+    .rot   { background-color: #f00e0e; }
+    .orange { background-color: #ff7f00; }
 
     .zettel p {
       margin: 0 0 12px 0;
@@ -127,13 +129,13 @@
 </head>
 <body>
 
-  <h1>Unsere Pinnwand</h1>
+  <h1>Wall of shame</h1>
 
   <form id="zettelForm">
-    <input type="text" id="nameFeld" placeholder="Dein Name" maxlength="30">
-    <input type="text" id="nachrichtFeld" placeholder="Deine Nachricht" maxlength="100">
+    <input type="text" id="nameFeld" placeholder="Name" maxlength="30">
+    <input type="text" id="nachrichtFeld" placeholder="Nachricht" maxlength="100">
     <button type="submit" id="sendenButton">Anpinnen</button>
-    <button type="button" id="loeschenAlle">Alle löschen</button>
+    <button type="button" id="loeschenAlle">Nuke!</button>
   </form>
 
   <div id="status"></div>
@@ -203,7 +205,7 @@
         await zettelHolen();
 
       } catch (fehler) {
-        statusSetzen('Konnte nicht senden. Server erreichbar?');
+        statusSetzen('Konnte nicht senden. Server is TOT :/');
         console.error(fehler);
 
       } finally {
@@ -239,7 +241,7 @@
       if (zettelListe.length === 0) {
         const hinweis = document.createElement('p');
         hinweis.className = 'leer';
-        hinweis.textContent = 'Noch keine Zettel. Schreib den ersten!';
+        hinweis.textContent = 'Brooklyn stinkt!';
         pinnwand.appendChild(hinweis);
         return;
       }
@@ -281,8 +283,8 @@
       const name = nameFeld.value.trim();
       const nachricht = nachrichtFeld.value.trim();
 
-      if (name === '' || nachricht === '') {
-        statusSetzen('Bitte Name und Nachricht ausfüllen.');
+      if (nachricht.length < 1) {
+        statusSetzen('Nope..');
         return;
       }
 
@@ -291,7 +293,7 @@
     });
 
     loeschenAlleButton.addEventListener('click', function () {
-      if (confirm('Willst du wirklich alle Zettel löschen?')) {
+      if (confirm('Nuke?!')) {
         alleLoeschen();
       }
     });

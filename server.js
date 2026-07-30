@@ -9,7 +9,7 @@ const { Pool } = require('pg');  // pg = PostgreSQL-Treiber
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const FARBEN = ['gelb', 'gruen', 'blau', 'lila'];
+const FARBEN = ['gelb', 'gruen', 'blau', 'lila', 'rot', 'orange'];  // Farben für die Zettel
 
 // ===== Verbindung zur Datenbank =====
 // Die Zugangsdaten stehen in .env, NICHT im Code.
@@ -56,14 +56,14 @@ app.post('/api/zettel', async function (req, res) {
   const name = String(req.body.name || '').trim();
   const nachricht = String(req.body.nachricht || '').trim();
 
-  if (name === '' || nachricht === '') {
-    return res.status(400).json({ fehler: 'Name und Nachricht sind Pflicht.' });
-  }
+  if (nachricht === '') {
+  return res.status(400).json({ fehler: 'Muss schon was drin stehen!' });
+}
   if (name.length > 30) {
-    return res.status(400).json({ fehler: 'Name ist zu lang (max. 30 Zeichen).' });
+    return res.status(400).json({ fehler: 'Wer heißt denn so lang?!? (max. 30 Zeichen).' });
   }
   if (nachricht.length > 100) {
-    return res.status(400).json({ fehler: 'Nachricht ist zu lang (max. 100 Zeichen).' });
+    return res.status(400).json({ fehler: 'Du willst mich doch verarschen? (max. 100 Zeichen).' });
   }
 
   const farbe = FARBEN[Math.floor(Math.random() * FARBEN.length)];
