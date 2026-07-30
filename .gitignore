@@ -1,0 +1,20 @@
+# ===== Was NICHT auf GitHub landen soll =====
+
+# Heruntergeladene Pakete. Stehen in package.json und werden
+# beim Deployen automatisch neu installiert. Riesig, gehört nicht ins Repo.
+node_modules/
+
+# Unsere Daten. Code gehört ins Repo, Daten nicht.
+zettel.json
+
+# Passwörter, Zugangsdaten, API-Schlüssel. NIEMALS hochladen.
+.env
+
+# Kram, den Windows und macOS von selbst anlegen
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Logdateien
+*.log
+npm-debug.log*
