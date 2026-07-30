@@ -60,8 +60,8 @@ app.post('/api/zettel', function (req, res) {
   if (name.length > 30) {
     return res.status(400).json({ fehler: 'Name ist zu lang (max. 30 Zeichen).' });
   }
-  if (nachricht.length > 100) {
-    return res.status(400).json({ fehler: 'Nachricht ist zu lang (max. 100 Zeichen).' });
+  if (nachricht.length > 1000) {
+    return res.status(400).json({ fehler: 'Nachricht ist zu lang (max. 1000 Zeichen).' });
   }
 
   const neuerZettel = {
