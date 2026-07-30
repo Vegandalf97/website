@@ -8,14 +8,14 @@
   <style>
     body {
       font-family: Arial, sans-serif;
-      background-color: #e0eea0;
+      background-color: #ff8d62;
       margin: 0;
       padding: 30px;
     }
 
     h1 {
       text-align: center;
-      color: #ff9900;
+      color: #000000;
     }
 
     form {
@@ -35,7 +35,7 @@
 
     button {
       padding: 10px 20px;
-      background-color: #5a3e2b;
+      background-color: #222222;
       color: white;
       border: none;
       border-radius: 6px;
@@ -44,7 +44,7 @@
     }
 
     button:hover {
-      background-color: #7a5a42;
+      background-color: #ff9b4f;
     }
 
     button:disabled {
@@ -58,7 +58,7 @@
       margin-bottom: 25px;
       text-align: center;
       font-size: 14px;
-      color: #a33;
+      color: rgb(199, 20, 20);
     }
 
     .pinnwand {
@@ -125,6 +125,16 @@
       color: #8a7660;
       font-style: italic;
     }
+
+    .trump {
+      position: fixed;
+      bottom: 0;
+      right: 0;
+      width: 200px;
+      opacity: 0.8;
+    }
+
+
   </style>
 </head>
 <body>
@@ -142,6 +152,7 @@
 
   <div class="pinnwand" id="pinnwand"></div>
 
+  <img src="/bilder/trump.png" alt="Trump" class="trump">
 
   <script>
     // ===== 1. Elemente holen =====
@@ -241,7 +252,7 @@
       if (zettelListe.length === 0) {
         const hinweis = document.createElement('p');
         hinweis.className = 'leer';
-        hinweis.textContent = 'Brooklyn stinkt!';
+        hinweis.textContent = 'Trump stinkt!';
         pinnwand.appendChild(hinweis);
         return;
       }
