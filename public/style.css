@@ -1,0 +1,288 @@
+/* ============================================
+   Gemeinsames Aussehen für ALLE Seiten
+   Aufgebaut nach "mobile first":
+   Grundregeln gelten fürs Handy, weiter unten
+   kommen die Ergänzungen für größere Bildschirme.
+   ============================================ */
+
+
+/* ===== Wichtigste Grundregel überhaupt =====
+   Ohne das rechnet der Browser padding und border
+   ZUSÄTZLICH zur Breite. Ein Element mit width:100%
+   und padding:15px wird dann breiter als der Bildschirm. */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+
+body {
+  font-family: Arial, sans-serif;
+  background-color: #f4e4c1;
+  margin: 0;
+  padding: 15px;                    /* wenig Rand auf kleinen Geräten */
+}
+
+h1 {
+  text-align: center;
+  color: #5a3e2b;
+
+  /* clamp(min, wunsch, max): wächst mit der Fensterbreite,
+     bleibt aber zwischen 1.5rem und 2.5rem.
+     5vw = 5% der Fensterbreite. */
+  font-size: clamp(1.5rem, 5vw, 2.5rem);
+}
+
+
+/* ===== Navigation (die Reiter) ===== */
+.navi {
+  display: flex;
+  flex-wrap: wrap;                  /* bricht um, wenn zu eng */
+  justify-content: center;
+  gap: 6px;
+  margin-bottom: 25px;
+  border-bottom: 2px solid #c4a878;
+}
+
+.navi a {
+  padding: 12px 16px;               /* mind. 44px hoch = gut mit dem Daumen treffbar */
+  color: #8a7660;
+  text-decoration: none;
+  font-size: 15px;
+  border: 2px solid transparent;
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+}
+
+.navi a:hover {
+  color: #5a3e2b;
+  background-color: #e8d5b0;
+}
+
+.navi a.aktiv {
+  background-color: #f4e4c1;
+  color: #5a3e2b;
+  font-weight: bold;
+  border-color: #c4a878;
+  margin-bottom: -2px;
+}
+
+
+/* ===== Bilder ===== */
+img {
+  max-width: 100%;                  /* nie breiter als der Platz */
+  height: auto;                     /* Seitenverhältnis bleibt */
+}
+
+.trump {
+  display: block;
+  width: 100%;
+  max-width: 200px;                 /* wächst mit, aber nicht endlos */
+  margin: 0 auto 16px auto;
+  border-radius: 8px;
+  box-shadow: 2px 2px 8px rgba(0, 0, 0, 0.25);
+}
+
+
+/* ===== Formular =====
+   Auf dem Handy untereinander, ab 600px nebeneinander. */
+form {
+  display: flex;
+  flex-direction: column;           /* gestapelt */
+  gap: 10px;
+  max-width: 500px;
+  margin: 0 auto 15px auto;
+}
+
+input {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #c4a878;
+  border-radius: 6px;
+
+  /* 16px verhindert, dass iPhones beim Antippen hineinzoomen */
+  font-size: 16px;
+}
+
+button {
+  padding: 12px 20px;
+  background-color: #5a3e2b;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+button:hover {
+  background-color: #7a5a42;
+}
+
+button:disabled {
+  background-color: #b0a396;
+  cursor: wait;
+}
+
+
+#status {
+  min-height: 24px;
+  margin-bottom: 20px;
+  text-align: center;
+  font-size: 14px;
+  color: #a33;
+}
+
+
+/* ===== Pinnwand ===== */
+.pinnwand {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;
+  justify-content: center;
+}
+
+.zettel {
+  position: relative;
+
+  /* flex: wachsen | schrumpfen | Wunschbreite
+     Auf schmalen Displays passt nur einer pro Zeile,
+     auf breiten mehrere - ganz ohne Media Query. */
+  flex: 1 1 200px;
+  max-width: 260px;
+
+  padding: 15px;
+  border-radius: 4px;
+  box-shadow: 2px 2px 6px rgba(0, 0, 0, 0.2);
+  transform: rotate(-2deg);
+  overflow-wrap: break-word;        /* lange Wörter umbrechen */
+}
+
+.gelb  { background-color: #f0e118; }
+.gruen { background-color: #13ff13; }
+.blau  { background-color: #a8d8ff; }
+.lila  { background-color: #e0b8ff; }
+
+.zettel p {
+  margin: 0 0 12px 0;
+  font-size: 16px;
+}
+
+.zettel small {
+  color: #777;
+  font-style: italic;
+}
+
+.zeit {
+  display: block;
+  margin-top: 4px;
+  color: #999;
+  font-size: 11px;
+  font-style: normal;
+}
+
+.loeschen {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  padding: 0;
+
+  /* groß genug für Finger */
+  width: 32px;
+  height: 32px;
+
+  background: none;
+  color: #999;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.loeschen:hover {
+  background: none;
+  color: #c00;
+}
+
+.leer {
+  color: #8a7660;
+  font-style: italic;
+  text-align: center;
+}
+
+.platzhalter {
+  text-align: center;
+  color: #8a7660;
+  font-style: italic;
+  margin-top: 50px;
+}
+
+
+/* ============================================
+   AB 600px BREITE: Tablets und Rechner
+   Alles hier drin gilt NUR, wenn das Fenster
+   mindestens 600px breit ist.
+   ============================================ */
+@media (min-width: 600px) {
+
+  body {
+    padding: 30px;
+  }
+
+  form {
+    flex-direction: row;            /* nebeneinander statt gestapelt */
+    flex-wrap: wrap;
+    justify-content: center;
+    max-width: none;
+  }
+
+  input {
+    width: auto;
+    flex: 1 1 180px;                /* teilen sich den Platz */
+    max-width: 250px;
+  }
+
+  button {
+    width: auto;
+  }
+
+  .navi a {
+    padding: 10px 22px;
+  }
+
+  .pinnwand {
+    gap: 20px;
+  }
+
+  .loeschen {
+    width: 24px;
+    height: 24px;
+    top: 4px;
+    right: 6px;
+    font-size: 18px;
+  }
+}
+
+/* ============================================
+   Unter 360px: alles etwas kleiner, damit es auf kleine Handys passt
+   ============================================ */
+@media (max-width: 360px) {
+
+  body {
+    padding: 8px;
+  }
+
+  .zettel {
+    padding: 12px;
+  }
+
+  h1 {
+    margin: 10px 0;
+  }
+}
+/* ============================================
+   AB 1000px: viel Platz, Inhalt mittig halten
+   ============================================ */
+@media (min-width: 1000px) {
+
+  .pinnwand {
+    max-width: 1100px;
+    margin: 0 auto;                 /* zentriert den ganzen Block */
+  }
+}

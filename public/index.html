@@ -3,317 +3,36 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Wall of shame</title>
-
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      background-color: #ff8d62;
-      margin: 0;
-      padding: 30px;
-    }
-
-    h1 {
-      text-align: center;
-      color: #000000;
-    }
-
-    form {
-      display: flex;
-      gap: 10px;
-      justify-content: center;
-      flex-wrap: wrap;
-      margin-bottom: 15px;
-    }
-
-    input {
-      padding: 10px;
-      border: 1px solid #c4a878;
-      border-radius: 6px;
-      font-size: 15px;
-    }
-
-    button {
-      padding: 10px 20px;
-      background-color: #222222;
-      color: white;
-      border: none;
-      border-radius: 6px;
-      font-size: 15px;
-      cursor: pointer;
-    }
-
-    button:hover {
-      background-color: #ff9b4f;
-    }
-
-    button:disabled {
-      background-color: #b0a396;
-      cursor: wait;
-    }
-
-    /* Statuszeile für Fehler und Hinweise */
-    #status {
-      min-height: 24px;
-      margin-bottom: 25px;
-      text-align: center;
-      font-size: 14px;
-      color: rgb(199, 20, 20);
-    }
-
-    .pinnwand {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 20px;
-      justify-content: center;
-    }
-
-    .zettel {
-      position: relative;
-      width: 200px;
-      padding: 15px;
-      border-radius: 4px;
-      box-shadow: 2px 2px 6px rgba(0, 0, 0, 0.2);
-      transform: rotate(-2deg);
-      word-wrap: break-word;
-    }
-
-    .gelb  { background-color: #f0e118; }
-    .gruen { background-color: #13ff13; }
-    .blau  { background-color: #229cff; }
-    .lila  { background-color: #9716fa; }
-    .rot   { background-color: #f00e0e; }
-    .orange { background-color: #ff7f00; }
-
-    .zettel p {
-      margin: 0 0 12px 0;
-      font-size: 16px;
-    }
-
-    .zettel small {
-      color: #777;
-      font-style: italic;
-    }
-
-    .zeit {
-      display: block;
-      margin-top: 4px;
-      color: #999;
-      font-size: 11px;
-      font-style: normal;
-    }
-
-    .loeschen {
-      position: absolute;
-      top: 4px;
-      right: 6px;
-      padding: 0;
-      width: 22px;
-      height: 22px;
-      background: none;
-      color: #999;
-      font-size: 18px;
-      line-height: 1;
-    }
-
-    .loeschen:hover {
-      background: none;
-      color: #c00;
-    }
-
-    .leer {
-      color: #8a7660;
-      font-style: italic;
-    }
-
-    .trump {
-      position: fixed;
-      bottom: 0;
-      right: 0;
-      width: 200px;
-      opacity: 0.8;
-    }
-
-
-  </style>
+  <title>Pinnwand</title>
+  <link rel="stylesheet" href="/style.css">
 </head>
 <body>
 
+  <!-- ===== Navigation: auf jeder Seite gleich,
+       nur "aktiv" wandert mit ===== -->
+  <nav class="navi">
+    <a href="/index.html" class="aktiv">Pinnwand</a>
+    <a href="/galerie.html">Galerie</a>
+    <a href="/ueber.html">Über uns</a>
+  </nav>
+
   <h1>Wall of shame</h1>
 
+  <!-- Nur auf dieser Seite. Dateinamen anpassen! -->
+  <img src="/bilder/trump.png" alt="Unser Bild" class="trump">
+
   <form id="zettelForm">
-    <input type="text" id="nameFeld" placeholder="Name" maxlength="30">
-    <input type="text" id="nachrichtFeld" placeholder="Nachricht" maxlength="100">
+    <input type="text" id="nameFeld" placeholder="Dein Name (optional)" maxlength="30">
+    <input type="text" id="nachrichtFeld" placeholder="Deine Nachricht" maxlength="100">
     <button type="submit" id="sendenButton">Anpinnen</button>
-    <button type="button" id="loeschenAlle">Nuke!</button>
+    <button type="button" id="loeschenAlle">Alle löschen</button>
   </form>
 
   <div id="status"></div>
 
   <div class="pinnwand" id="pinnwand"></div>
 
-  <img src="/bilder/trump.png" alt="Trump" class="trump">
-
-  <script>
-    // ===== 1. Elemente holen =====
-    const form = document.querySelector('#zettelForm');
-    const nameFeld = document.querySelector('#nameFeld');
-    const nachrichtFeld = document.querySelector('#nachrichtFeld');
-    const pinnwand = document.querySelector('#pinnwand');
-    const statusZeile = document.querySelector('#status');
-    const sendenButton = document.querySelector('#sendenButton');
-    const loeschenAlleButton = document.querySelector('#loeschenAlle');
-
-    // Die Daten leben auf dem Server. Diese Liste ist nur eine Kopie zum Anzeigen.
-    let zettelListe = [];
-
-
-    function statusSetzen(text) {
-      statusZeile.textContent = text;
-    }
-
-
-    // ===== 2. Zettel vom Server holen =====
-    async function zettelHolen() {
-      try {
-        const antwort = await fetch('/api/zettel');
-
-        if (!antwort.ok) {
-          throw new Error('Server antwortet mit Status ' + antwort.status);
-        }
-
-        zettelListe = await antwort.json();
-        statusSetzen('');
-        anzeigen();
-
-      } catch (fehler) {
-        statusSetzen('Keine Verbindung zum Server.');
-        console.error(fehler);
-      }
-    }
-
-
-    // ===== 3. Neuen Zettel zum Server schicken =====
-    async function zettelSenden(name, nachricht) {
-      sendenButton.disabled = true;           // Doppelklicks verhindern
-
-      try {
-        const antwort = await fetch('/api/zettel', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: name, nachricht: nachricht })
-        });
-
-        const daten = await antwort.json();
-
-        if (!antwort.ok) {
-          statusSetzen(daten.fehler || 'Der Zettel wurde abgelehnt.');
-          return;
-        }
-
-        nachrichtFeld.value = '';
-        nachrichtFeld.focus();
-        await zettelHolen();
-
-      } catch (fehler) {
-        statusSetzen('Konnte nicht senden. Server is TOT :/');
-        console.error(fehler);
-
-      } finally {
-        sendenButton.disabled = false;        // läuft immer, egal was passiert
-      }
-    }
-
-
-    // ===== 4. Löschen =====
-    async function zettelLoeschen(id) {
-      try {
-        await fetch('/api/zettel/' + id, { method: 'DELETE' });
-        await zettelHolen();
-      } catch (fehler) {
-        statusSetzen('Löschen fehlgeschlagen.');
-      }
-    }
-
-    async function alleLoeschen() {
-      try {
-        await fetch('/api/zettel', { method: 'DELETE' });
-        await zettelHolen();
-      } catch (fehler) {
-        statusSetzen('Löschen fehlgeschlagen.');
-      }
-    }
-
-
-    // ===== 5. Anzeigen =====
-    function anzeigen() {
-      pinnwand.innerHTML = '';
-
-      if (zettelListe.length === 0) {
-        const hinweis = document.createElement('p');
-        hinweis.className = 'leer';
-        hinweis.textContent = 'Trump stinkt!';
-        pinnwand.appendChild(hinweis);
-        return;
-      }
-
-      zettelListe.forEach(function (eintrag) {
-        const zettel = document.createElement('div');
-        zettel.className = 'zettel ' + eintrag.farbe;
-
-        const text = document.createElement('p');
-        text.textContent = eintrag.nachricht;
-
-        const autor = document.createElement('small');
-        autor.textContent = 'von ' + eintrag.name;
-
-        const zeit = document.createElement('span');
-        zeit.className = 'zeit';
-        zeit.textContent = new Date(eintrag.zeit).toLocaleString('de-DE');
-        autor.appendChild(zeit);
-
-        const loeschen = document.createElement('button');
-        loeschen.className = 'loeschen';
-        loeschen.textContent = '×';
-        loeschen.addEventListener('click', function () {
-          zettelLoeschen(eintrag.id);
-        });
-
-        zettel.appendChild(loeschen);
-        zettel.appendChild(text);
-        zettel.appendChild(autor);
-        pinnwand.appendChild(zettel);
-      });
-    }
-
-
-    // ===== 6. Formular =====
-    form.addEventListener('submit', function (event) {
-      event.preventDefault();
-
-      const name = nameFeld.value.trim();
-      const nachricht = nachrichtFeld.value.trim();
-
-      if (nachricht.length < 1) {
-        statusSetzen('Nope..');
-        return;
-      }
-
-      statusSetzen('');
-      zettelSenden(name, nachricht);
-    });
-
-    loeschenAlleButton.addEventListener('click', function () {
-      if (confirm('Nuke?!')) {
-        alleLoeschen();
-      }
-    });
-
-
-    // ===== 7. Start: laden und alle 3 Sekunden aktualisieren =====
-    zettelHolen();
-    setInterval(zettelHolen, 3000);
-  </script>
+  <script src="/pinnwand.js"></script>
 
 </body>
 </html>
