@@ -6,20 +6,18 @@
   <title>Pinnwand</title>
   <link rel="stylesheet" href="/style.css">
 </head>
-<body>
 
-  <!-- ===== Navigation: auf jeder Seite gleich,
-       nur "aktiv" wandert mit ===== -->
+<!-- Die Klasse am body steuert das Hintergrundbild.
+     Nur diese Seite hat sie - die anderen bleiben schlicht. -->
+<body class="seite-pinnwand">
+
   <nav class="navi">
-    <a href="/index.html" class="aktiv">Pinnwand</a>
+    <a href="/index.html" class="aktiv">Wall of shame</a>
     <a href="/galerie.html">Galerie</a>
     <a href="/ueber.html">Über uns</a>
   </nav>
 
   <h1>Wall of shame</h1>
-
-  <!-- Nur auf dieser Seite. Dateinamen anpassen! -->
-  <img src="/bilder/trump.png" alt="Unser Bild" class="trump">
 
   <form id="zettelForm">
     <input type="text" id="nameFeld" placeholder="Dein Name (optional)" maxlength="30">

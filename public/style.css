@@ -22,6 +22,24 @@ body {
   padding: 15px;                    /* wenig Rand auf kleinen Geräten */
 }
 
+.seite-pinnwand {
+  background-image:
+    linear-gradient(rgba(244, 228, 193, 0.55), rgba(244, 228, 193, 0.55)),
+    url('/bilder/hintergrund.jpeg');
+
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-attachment: fixed;
+    min-height: 100vh;
+}
+
+@media (max-width: 600px) {
+  .seite-pinnwand {
+    background-attachment: scroll;
+  }
+}
+
 h1 {
   text-align: center;
   color: #5a3e2b;
@@ -73,11 +91,11 @@ img {
   height: auto;                     /* Seitenverhältnis bleibt */
 }
 
-.trump {
+.kopfbild {
   display: block;
   width: 100%;
-  max-width: 200px;                 /* wächst mit, aber nicht endlos */
-  margin: 0 auto 16px auto;
+  max-width: 400px;                 /* wächst mit, aber nicht endlos */
+  margin: 0 auto 20px auto;
   border-radius: 8px;
   box-shadow: 2px 2px 8px rgba(0, 0, 0, 0.25);
 }
@@ -259,23 +277,7 @@ button:disabled {
   }
 }
 
-/* ============================================
-   Unter 360px: alles etwas kleiner, damit es auf kleine Handys passt
-   ============================================ */
-@media (max-width: 360px) {
 
-  body {
-    padding: 8px;
-  }
-
-  .zettel {
-    padding: 12px;
-  }
-
-  h1 {
-    margin: 10px 0;
-  }
-}
 /* ============================================
    AB 1000px: viel Platz, Inhalt mittig halten
    ============================================ */
