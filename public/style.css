@@ -1,69 +1,141 @@
 /* ============================================
-   Gemeinsames Aussehen für ALLE Seiten
-   Aufgebaut nach "mobile first":
-   Grundregeln gelten fürs Handy, weiter unten
-   kommen die Ergänzungen für größere Bildschirme.
+   Wall of Notes - gemeinsames Aussehen
+   Mobile first: Grundregeln gelten fürs Handy,
+   Media Queries ergänzen für größere Bildschirme.
    ============================================ */
 
-
-/* ===== Wichtigste Grundregel überhaupt =====
-   Ohne das rechnet der Browser padding und border
-   ZUSÄTZLICH zur Breite. Ein Element mit width:100%
-   und padding:15px wird dann breiter als der Bildschirm. */
 *, *::before, *::after {
   box-sizing: border-box;
 }
 
-
 body {
+  position: relative;        /* Bezugspunkt für den Anmeldebereich */
   font-family: Arial, sans-serif;
-  background-color: #f4e4c1;
+  background-color: #000000;
   margin: 0;
-  padding: 15px;                    /* wenig Rand auf kleinen Geräten */
-}
+  padding: 15px;
 
-.seite-pinnwand {
+  /* Hintergrundbild auf ALLEN Seiten */
   background-image:
-    linear-gradient(rgba(244, 228, 193, 0.55), rgba(244, 228, 193, 0.55)),
-    url('/bilder/hintergrund.jpeg');
-
-    background-size: cover;
-    background-position: center;
-    background-repeat: no-repeat;
-    background-attachment: fixed;
-    min-height: 100vh;
+    linear-gradient(rgba(0, 0, 0, 0), rgba(244, 228, 193, 0)),
+    url('/bilder/hintergrund.jpg');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+  min-height: 100vh;
 }
 
 @media (max-width: 600px) {
-  .seite-pinnwand {
+  body {
     background-attachment: scroll;
   }
 }
 
+
 h1 {
   text-align: center;
-  color: #5a3e2b;
-
-  /* clamp(min, wunsch, max): wächst mit der Fensterbreite,
-     bleibt aber zwischen 1.5rem und 2.5rem.
-     5vw = 5% der Fensterbreite. */
+  color: #ffffff;
   font-size: clamp(1.5rem, 5vw, 2.5rem);
+  margin: 10px 0 20px 0;
 }
 
 
-/* ===== Navigation (die Reiter) ===== */
+/* ============================================
+   ANMELDEBEREICH OBEN RECHTS
+   ============================================ */
+.konto {
+  position: absolute;
+  top: 12px;
+  right: 15px;
+  z-index: 100;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.kontoName {
+  color: #ffffff;
+  font-size: 13px;
+  padding: 7px 4px;
+}
+
+.kontoKnopf {
+  padding: 6px 12px;
+  background-color: rgba(0, 0, 0, 0.45);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.kontoKnopf:hover {
+  background-color: rgba(255, 255, 255, 0.18);
+}
+
+.kontoHaupt {
+  background-color: #2f6fd0;
+  border-color: #2f6fd0;
+}
+
+.kontoHaupt:hover {
+  background-color: #4585e8;
+}
+
+.kontoKasten {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 220px;
+  padding: 14px;
+  background-color: #2b2b28;
+  border: 1px solid #5a5952;
+  border-radius: 12px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+}
+
+.kontoTitel {
+  color: #edebe4;
+  font-size: 14px;
+  font-weight: bold;
+}
+
+.kontoKasten input {
+  width: 100%;
+  padding: 8px;
+  background-color: #3a3a37;
+  color: #edebe4;
+  border: 1px solid #5a5952;
+  border-radius: 6px;
+  font-size: 15px;
+}
+
+.kontoMeldung {
+  min-height: 16px;
+  color: #ff9090;
+  font-size: 12px;
+}
+
+.kontoReihe {
+  display: flex;
+  gap: 6px;
+}
+
+
+/* ===== Navigation ===== */
 .navi {
   display: flex;
-  flex-wrap: wrap;                  /* bricht um, wenn zu eng */
+  flex-wrap: wrap;
   justify-content: center;
   gap: 6px;
-  margin-bottom: 25px;
-  border-bottom: 2px solid #c4a878;
+  margin-bottom: 20px;
+  border-bottom: 2px solid #020046c5;
 }
 
 .navi a {
-  padding: 12px 16px;               /* mind. 44px hoch = gut mit dem Daumen treffbar */
-  color: #8a7660;
+  padding: 12px 16px;
+  color: #ffffff;
   text-decoration: none;
   font-size: 15px;
   border: 2px solid transparent;
@@ -72,62 +144,54 @@ h1 {
 }
 
 .navi a:hover {
-  color: #5a3e2b;
-  background-color: #e8d5b0;
+  color: #ffffff;
+  background-color: #493f2f00;
+  text-decoration: underline;
 }
 
 .navi a.aktiv {
-  background-color: #f4e4c1;
-  color: #5a3e2b;
+  background-color: #888ff500;
+  color: #fefeff;
   font-weight: bold;
-  border-color: #c4a878;
+  border-color: #00000000;
   margin-bottom: -2px;
 }
 
 
 /* ===== Bilder ===== */
 img {
-  max-width: 100%;                  /* nie breiter als der Platz */
-  height: auto;                     /* Seitenverhältnis bleibt */
-}
-
-.kopfbild {
-  display: block;
-  width: 100%;
-  max-width: 400px;                 /* wächst mit, aber nicht endlos */
-  margin: 0 auto 20px auto;
-  border-radius: 8px;
-  box-shadow: 2px 2px 8px rgba(0, 0, 0, 0.25);
+  max-width: 100%;
+  height: auto;
 }
 
 
-/* ===== Formular =====
-   Auf dem Handy untereinander, ab 600px nebeneinander. */
-form {
-  display: flex;
-  flex-direction: column;           /* gestapelt */
-  gap: 10px;
-  max-width: 500px;
-  margin: 0 auto 15px auto;
+/* ===== Hinweiszeile und Statusmeldungen ===== */
+#status {
+  position: absolute;
+  top: 12px;
+  left: 15px;
+  z-index: 100;
+  max-width: 45%;
+  font-size: 13px;
+  color: #ff9090;
 }
 
+
+/* ===== Allgemeine Eingabefelder und Knöpfe ===== */
 input {
-  width: 100%;
-  padding: 12px;
-  border: 1px solid #c4a878;
+  padding: 10px;
+  border: 1px solid #ffffff;
   border-radius: 6px;
-
-  /* 16px verhindert, dass iPhones beim Antippen hineinzoomen */
-  font-size: 16px;
+  font-size: 16px;      /* verhindert Zoom auf iPhones */
 }
 
 button {
-  padding: 12px 20px;
+  padding: 10px 18px;
   background-color: #5a3e2b;
   color: white;
   border: none;
   border-radius: 6px;
-  font-size: 16px;
+  font-size: 15px;
   cursor: pointer;
 }
 
@@ -135,107 +199,235 @@ button:hover {
   background-color: #7a5a42;
 }
 
-button:disabled {
-  background-color: #b0a396;
-  cursor: wait;
+
+/* ============================================
+   DIE WAND - die freie Fläche
+   ============================================ */
+.wand {
+  position: relative;              /* Bezugspunkt für die Notizen */
+  min-height: 70vh;
+  background-color: rgba(0, 0, 0, 0.089);
+  border: 2px dashed #c4a87800;
+  border-radius: 10px;
+  overflow: hidden;                /* nichts ragt raus */
 }
 
 
-#status {
-  min-height: 24px;
-  margin-bottom: 20px;
-  text-align: center;
-  font-size: 14px;
-  color: #a33;
+/* ============================================
+   EINE NOTIZ
+   Kein Padding an der Notiz selbst - Name, x und
+   Text liegen absolut darin und bestimmen ihre
+   Abstände selbst. Diese Werte müssen zu den
+   Konstanten in pinnwand.js passen!
+   ============================================ */
+.notiz {
+  position: absolute;
+  isolation: isolate;         /* eigener Stapelkontext */
+  padding: 0;
+
+  background-color: #2b2b28;
+  color: #edebe4;
+  border: 1px solid #5a5952;  /* RAHMEN = 1 */
+  border-radius: 20px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+
+  font-size: 15px;
+  line-height: 1.45;
+
+  /* Die Größe steuert ausschließlich pinnwand.js.
+     Der Browser-Griff ist bewusst abgeschaltet. */
+  resize: none;
+  overflow: hidden;
+
+  min-width: 150px;
+  max-width: 520px;
+  min-height: 90px;
+  max-height: 460px;
+
+  cursor: grab;
+  user-select: none;
+  overflow-wrap: break-word;
+  touch-action: none;
 }
 
-
-/* ===== Pinnwand ===== */
-.pinnwand {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 15px;
-  justify-content: center;
+.notiz.wirdGezogen {
+  cursor: grabbing;
+  border-color: #6b6a62;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.45);
 }
 
-.zettel {
-  position: relative;
+/* Die Farbe aus der Datenbank färbt den Rand */
+.gelb    { border-color: #e0d12b; }
+.gruen   { border-color: #28d43f; }
+.blau    { border-color: #0084ff; }
+.lila    { border-color: #9900ff; }
+.rot     { border-color: #b91818; }
+.orange  { border-color: #ff7f00; }
+.tuerkis { border-color: #15c7c7; }
 
-  /* flex: wachsen | schrumpfen | Wunschbreite
-     Auf schmalen Displays passt nur einer pro Zeile,
-     auf breiten mehrere - ganz ohne Media Query. */
-  flex: 1 1 200px;
-  max-width: 260px;
 
-  padding: 15px;
-  border-radius: 4px;
-  box-shadow: 2px 2px 6px rgba(0, 0, 0, 0.2);
-  transform: rotate(-2deg);
-  overflow-wrap: break-word;        /* lange Wörter umbrechen */
-}
-
-.gelb  { background-color: #f0e118; }
-.gruen { background-color: #13ff13; }
-.blau  { background-color: #a8d8ff; }
-.lila  { background-color: #e0b8ff; }
-
-.zettel p {
-  margin: 0 0 12px 0;
-  font-size: 16px;
-}
-
-.zettel small {
-  color: #777;
+/* Kopfzeile: Name links, x rechts */
+.notiz small {
+  position: absolute;
+  top: 9px;
+  left: 13px;
+  right: 34px;
+  color: #8f8d85;
   font-style: italic;
-}
+  font-size: 12px;
 
-.zeit {
-  display: block;
-  margin-top: 4px;
-  color: #999;
-  font-size: 11px;
-  font-style: normal;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;    /* zu lange Namen enden mit ... */
 }
 
 .loeschen {
   position: absolute;
-  top: 2px;
-  right: 2px;
+  top: 6px;
+  right: 8px;
+  z-index: 2;
   padding: 0;
-
-  /* groß genug für Finger */
-  width: 32px;
-  height: 32px;
-
+  width: 22px;
+  height: 22px;
   background: none;
-  color: #999;
-  font-size: 20px;
+  color: #7a7972;
+  font-size: 22px;
   line-height: 1;
+  border-radius: 50%;
 }
 
 .loeschen:hover {
-  background: none;
-  color: #c00;
+  background-color: #3d3d38;
+  color: #ff8080;
 }
 
-.leer {
-  color: #8a7660;
-  font-style: italic;
-  text-align: center;
+
+/* Der Text - diese vier Werte entsprechen
+   TEXT_OBEN / TEXT_LINKS / TEXT_RECHTS / TEXT_UNTEN */
+.notiz p {
+  position: absolute;
+  top: 30px;
+  left: 12px;
+  right: 5px;
+  bottom: 6px;
+  margin: 0;
+  overflow-y: auto;
+  white-space: pre-wrap;
 }
+
+
+/* Griff unten rechts zum Breiterziehen */
+.notiz::after {
+  content: '';
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  width: 15px;
+  height: 15px;
+  border-right: 2px solid;
+  border-bottom: 2px solid;
+  border-color: inherit;      /* Rahmenfarbe der Notiz */
+  border-bottom-right-radius: 20px;
+  opacity: 0.7;
+  cursor: ew-resize;
+  z-index: 2;
+}
+
+.notiz:hover::after {
+  opacity: 1;
+}
+
+/* Beim Schreiben kein Griff */
+.notiz.neu::after {
+  display: none;
+}
+
+
+/* ============================================
+   SCHMALE, TRANSPARENTE BILDLAUFLEISTE
+   ============================================ */
+
+/* Firefox */
+.notiz p,
+.notiz.neu textarea {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.28) transparent;
+}
+
+/* Chrome, Edge, Safari */
+.notiz p::-webkit-scrollbar,
+.notiz.neu textarea::-webkit-scrollbar {
+  width: 6px;                 /* SCROLLBAR = 6 in pinnwand.js */
+}
+
+.notiz p::-webkit-scrollbar-button,
+.notiz.neu textarea::-webkit-scrollbar-button {
+  display: none;
+  height: 0;
+  width: 0;
+}
+
+.notiz p::-webkit-scrollbar-track,
+.notiz p::-webkit-scrollbar-track-piece,
+.notiz p::-webkit-scrollbar-corner,
+.notiz.neu textarea::-webkit-scrollbar-track,
+.notiz.neu textarea::-webkit-scrollbar-track-piece,
+.notiz.neu textarea::-webkit-scrollbar-corner {
+  background-color: transparent;
+}
+
+.notiz p::-webkit-scrollbar-thumb,
+.notiz.neu textarea::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.28);
+  border-radius: 3px;
+}
+
+.notiz p::-webkit-scrollbar-thumb:hover,
+.notiz.neu textarea::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.45);
+}
+
+
+/* ===== Notiz im Schreibzustand ===== */
+.notiz.neu {
+  background-color: #2b2b28;
+  border-color: #5a5952;
+  cursor: default;
+}
+
+.notiz.neu textarea {
+  position: absolute;
+  top: 10px;
+  left: 12px;
+  right: 5px;
+  bottom: 8px;
+  width: auto;
+  height: auto;
+  border: none;
+  background: none;
+  color: #edebe4;
+  resize: none;
+  font-family: inherit;
+  font-size: 15px;
+  line-height: 1.45;
+  outline: none;
+}
+
+.notiz.neu textarea::placeholder {
+  color: #85837b;
+}
+
 
 .platzhalter {
   text-align: center;
-  color: #8a7660;
+  color: #dedcd4;
   font-style: italic;
   margin-top: 50px;
 }
 
 
 /* ============================================
-   AB 600px BREITE: Tablets und Rechner
-   Alles hier drin gilt NUR, wenn das Fenster
-   mindestens 600px breit ist.
+   AB 600px
    ============================================ */
 @media (min-width: 600px) {
 
@@ -243,48 +435,11 @@ button:disabled {
     padding: 30px;
   }
 
-  form {
-    flex-direction: row;            /* nebeneinander statt gestapelt */
-    flex-wrap: wrap;
-    justify-content: center;
-    max-width: none;
-  }
-
-  input {
-    width: auto;
-    flex: 1 1 180px;                /* teilen sich den Platz */
-    max-width: 250px;
-  }
-
-  button {
-    width: auto;
-  }
-
   .navi a {
     padding: 10px 22px;
   }
 
-  .pinnwand {
-    gap: 20px;
-  }
-
-  .loeschen {
-    width: 24px;
-    height: 24px;
-    top: 4px;
-    right: 6px;
-    font-size: 18px;
-  }
-}
-
-
-/* ============================================
-   AB 1000px: viel Platz, Inhalt mittig halten
-   ============================================ */
-@media (min-width: 1000px) {
-
-  .pinnwand {
-    max-width: 1100px;
-    margin: 0 auto;                 /* zentriert den ganzen Block */
+  .wand {
+    min-height: 75vh;
   }
 }

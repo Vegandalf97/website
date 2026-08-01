@@ -3,33 +3,29 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Pinnwand</title>
+  <title>Wall of Notes</title>
   <link rel="stylesheet" href="/style.css">
 </head>
 
-<!-- Die Klasse am body steuert das Hintergrundbild.
-     Nur diese Seite hat sie - die anderen bleiben schlicht. -->
-<body class="seite-pinnwand">
+<body>
 
-  <nav class="navi">
-    <a href="/index.html" class="aktiv">Wall of shame</a>
-    <a href="/galerie.html">Stuff</a>
-    <a href="/ueber.html">Stuff</a>
-  </nav>
-
-  <h1>Wall of shame</h1>
-
-  <form id="zettelForm">
-    <input type="text" id="nameFeld" placeholder="Dein Name (optional)" maxlength="30">
-    <input type="text" id="nachrichtFeld" placeholder="Deine Nachricht" maxlength="100">
-    <button type="submit" id="sendenButton">Anpinnen</button>
-    <button type="button" id="loeschenAlle">Alle löschen</button>
-  </form>
-
+  <!-- Statusmeldungen oben links -->
   <div id="status"></div>
 
-  <div class="pinnwand" id="pinnwand"></div>
+  <!-- Anmeldebereich oben rechts -->
+  <div class="konto" id="konto"></div>
 
+  <nav class="navi">
+    <a href="/index.html" class="aktiv">Wall of Notes</a>
+    <a href="/galerie.html">Projects</a>
+    <a href="/ueber.html">About me</a>
+  </nav>
+
+  <h1>Wall of Notes</h1>
+
+  <div class="wand" id="wand"></div>
+
+  <script src="/konto.js"></script>
   <script src="/pinnwand.js"></script>
 
 </body>

@@ -1,28 +1,98 @@
-// ===== Pinnwand-Server mit PostgreSQL-Datenbank =====
+// ===== Wall of Notes - Server =====
 
-require('dotenv').config();      // liest die Datei .env ein
+require('dotenv').config();
 
 const express = require('express');
 const path = require('path');
-const { Pool } = require('pg');  // pg = PostgreSQL-Treiber
+const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
+const cookieParser = require('cookie-parser');
+const { Pool } = require('pg');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const FARBEN = ['gelb', 'gruen', 'blau', 'lila', 'rot', 'orange'];  // Farben für die Zettel
+app.set('trust proxy', 1);
 
-// ===== Verbindung zur Datenbank =====
-// Die Zugangsdaten stehen in .env, NICHT im Code.
+const FARBEN = ['gelb', 'gruen', 'blau', 'lila', 'rot', 'orange', 'tuerkis'];
+
+// ===== Grenzen =====
+const MAX_X = 4000;
+const MAX_Y = 4000;
+const MAX_ZEICHEN = 500;
+
+const MIN_BREITE = 150;
+const MAX_BREITE = 520;
+const MIN_HOEHE = 90;
+const MAX_HOEHE = 460;
+
+const GUARD_BREITE = 300;
+const GUARD_HOEHE = 200;
+const BREITE_PRO_ZEICHEN = 6;
+const HOEHE_PRO_ZEICHEN = 5;
+
+// ===== Konten =====
+const NAME_MIN = 3;
+const NAME_MAX = 20;
+const PASSWORT_MIN = 8;
+const PASSWORT_MAX = 100;
+const SITZUNG_TAGE = 30;
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }     // Neon verlangt eine verschlüsselte Verbindung
+  ssl: { rejectUnauthorized: false }
 });
 
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(cookieParser());
 
 
-// ===== Tabelle anlegen, falls sie noch nicht existiert =====
+// ============================================
+//  LIVE-VERBINDUNGEN (Server-Sent Events)
+// ============================================
+let klienten = [];
+
+app.get('/api/ereignisse', function (req, res) {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
+
+  res.write('retry: 3000\n\n');
+  klienten.push(res);
+
+  req.on('close', function () {
+    klienten = klienten.filter(function (eintrag) {
+      return eintrag !== res;
+    });
+  });
+});
+
+
+function alleBenachrichtigen() {
+  klienten.forEach(function (res) {
+    res.write('data: aktualisiert\n\n');
+  });
+}
+
+
+setInterval(function () {
+  klienten.forEach(function (res) {
+    res.write(': ping\n\n');
+  });
+}, 25000);
+
+
+setInterval(function () {
+  pool.query('DELETE FROM sitzungen WHERE laeuft_ab < NOW()')
+    .catch(function (fehler) {
+      console.error('Aufräumen fehlgeschlagen:', fehler.message);
+    });
+}, 60 * 60 * 1000);
+
+
+// ===== Tabellen anlegen bzw. erweitern =====
 async function datenbankVorbereiten() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS zettel (
@@ -33,17 +103,252 @@ async function datenbankVorbereiten() {
       zeit      TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
+
+  await pool.query(`ALTER TABLE zettel
+    ADD COLUMN IF NOT EXISTS x INTEGER NOT NULL DEFAULT floor(random() * 600 + 20)`);
+  await pool.query(`ALTER TABLE zettel
+    ADD COLUMN IF NOT EXISTS y INTEGER NOT NULL DEFAULT floor(random() * 350 + 20)`);
+  await pool.query(`ALTER TABLE zettel
+    ADD COLUMN IF NOT EXISTS breite INTEGER NOT NULL DEFAULT 190`);
+  await pool.query(`ALTER TABLE zettel
+    ADD COLUMN IF NOT EXISTS hoehe INTEGER NOT NULL DEFAULT 130`);
+  await pool.query(`ALTER TABLE zettel
+    ADD COLUMN IF NOT EXISTS ebene INTEGER NOT NULL DEFAULT 0`);
+
+  // ===== Benutzerkonten =====
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS benutzer (
+      id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      benutzername  TEXT NOT NULL,
+      passwort_hash TEXT NOT NULL,
+      erstellt      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS benutzer_name_eindeutig
+      ON benutzer (lower(benutzername))
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS sitzungen (
+      token       TEXT PRIMARY KEY,
+      benutzer_id UUID NOT NULL REFERENCES benutzer(id) ON DELETE CASCADE,
+      laeuft_ab   TIMESTAMPTZ NOT NULL
+    )
+  `);
+
+  // ===== Wem gehört eine Notiz? =====
+  // Diese Spalte MUSS nach der Tabelle benutzer angelegt werden,
+  // weil sie darauf verweist.
+  // ON DELETE SET NULL: wird ein Konto gelöscht, bleiben die
+  // Notizen bestehen und gelten dann als besitzerlos.
+  await pool.query(`
+    ALTER TABLE zettel
+      ADD COLUMN IF NOT EXISTS benutzer_id UUID REFERENCES benutzer(id) ON DELETE SET NULL
+  `);
+
   console.log('Datenbank bereit.');
 }
 
 
-// ===== ROUTE 1: Alle Zettel holen =====
-app.get('/api/zettel', async function (req, res) {
+function zahlOderNull(wert, min, max) {
+  if (wert === undefined || wert === null || wert === '') {
+    return null;
+  }
+
+  const zahl = Math.round(Number(wert));
+
+  if (!Number.isFinite(zahl)) {
+    return null;
+  }
+  return Math.min(Math.max(zahl, min), max);
+}
+
+
+// ============================================
+//  ANMELDUNG
+// ============================================
+
+async function benutzerLaden(req, res, next) {
+  req.benutzer = null;
+
+  const token = req.cookies ? req.cookies.sitzung : null;
+
+  if (token) {
+    try {
+      const ergebnis = await pool.query(
+        `SELECT b.id, b.benutzername
+         FROM sitzungen s
+         JOIN benutzer b ON b.id = s.benutzer_id
+         WHERE s.token = $1 AND s.laeuft_ab > NOW()`,
+        [token]
+      );
+
+      if (ergebnis.rowCount > 0) {
+        req.benutzer = ergebnis.rows[0];
+      }
+    } catch (fehler) {
+      console.error('Sitzung konnte nicht geprüft werden:', fehler.message);
+    }
+  }
+
+  next();
+}
+
+app.use(benutzerLaden);
+app.use(express.static(path.join(__dirname, 'public')));
+
+
+async function anmelden(res, req, benutzer) {
+  const token = crypto.randomBytes(32).toString('hex');
+
+  await pool.query(
+    `INSERT INTO sitzungen (token, benutzer_id, laeuft_ab)
+     VALUES ($1, $2, NOW() + ($3 || ' days')::interval)`,
+    [token, benutzer.id, String(SITZUNG_TAGE)]
+  );
+
+  res.cookie('sitzung', token, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: req.secure,
+    maxAge: SITZUNG_TAGE * 24 * 60 * 60 * 1000
+  });
+}
+
+
+function namePruefen(name) {
+  if (name.length < NAME_MIN || name.length > NAME_MAX) {
+    return 'Der Name muss ' + NAME_MIN + ' bis ' + NAME_MAX + ' Zeichen lang sein.';
+  }
+  if (!/^[a-zA-Z0-9_.-]+$/.test(name)) {
+    return 'Erlaubt sind Buchstaben, Ziffern, Punkt, Bindestrich und Unterstrich.';
+  }
+  return null;
+}
+
+
+app.get('/api/ich', function (req, res) {
+  res.json({
+    benutzername: req.benutzer ? req.benutzer.benutzername : null
+  });
+});
+
+
+app.post('/api/registrieren', async function (req, res) {
+  const name = String(req.body.benutzername || '').trim();
+  const passwort = String(req.body.passwort || '');
+
+  const namensFehler = namePruefen(name);
+  if (namensFehler) {
+    return res.status(400).json({ fehler: namensFehler });
+  }
+  if (passwort.length < PASSWORT_MIN || passwort.length > PASSWORT_MAX) {
+    return res.status(400).json({
+      fehler: 'Das Passwort muss mindestens ' + PASSWORT_MIN + ' Zeichen haben.'
+    });
+  }
+
+  try {
+    const hash = await bcrypt.hash(passwort, 12);
+
+    const ergebnis = await pool.query(
+      `INSERT INTO benutzer (benutzername, passwort_hash)
+       VALUES ($1, $2) RETURNING id, benutzername`,
+      [name, hash]
+    );
+
+    const benutzer = ergebnis.rows[0];
+    await anmelden(res, req, benutzer);
+
+    res.status(201).json({ benutzername: benutzer.benutzername });
+
+  } catch (fehler) {
+    if (fehler.code === '23505') {
+      return res.status(409).json({ fehler: 'Dieser Name ist schon vergeben.' });
+    }
+    console.error(fehler);
+    res.status(500).json({ fehler: 'Registrierung fehlgeschlagen.' });
+  }
+});
+
+
+app.post('/api/login', async function (req, res) {
+  const name = String(req.body.benutzername || '').trim();
+  const passwort = String(req.body.passwort || '');
+
+  if (name === '' || passwort === '') {
+    return res.status(400).json({ fehler: 'Bitte Name und Passwort eingeben.' });
+  }
+
   try {
     const ergebnis = await pool.query(
-      'SELECT id, name, nachricht, farbe, zeit FROM zettel ORDER BY zeit DESC'
+      `SELECT id, benutzername, passwort_hash
+       FROM benutzer WHERE lower(benutzername) = lower($1)`,
+      [name]
     );
-    res.json(ergebnis.rows);          // .rows = die gefundenen Zeilen
+
+    const benutzer = ergebnis.rows[0];
+
+    const hash = benutzer
+      ? benutzer.passwort_hash
+      : '$2a$12$0000000000000000000000000000000000000000000000000000';
+
+    const passt = await bcrypt.compare(passwort, hash);
+
+    if (!benutzer || !passt) {
+      return res.status(401).json({ fehler: 'Name oder Passwort ist falsch.' });
+    }
+
+    await anmelden(res, req, benutzer);
+    res.json({ benutzername: benutzer.benutzername });
+
+  } catch (fehler) {
+    console.error(fehler);
+    res.status(500).json({ fehler: 'Anmeldung fehlgeschlagen.' });
+  }
+});
+
+
+app.post('/api/logout', async function (req, res) {
+  const token = req.cookies ? req.cookies.sitzung : null;
+
+  if (token) {
+    try {
+      await pool.query('DELETE FROM sitzungen WHERE token = $1', [token]);
+    } catch (fehler) {
+      console.error(fehler);
+    }
+  }
+
+  res.clearCookie('sitzung');
+  res.json({ ok: true });
+});
+
+
+// ============================================
+//  NOTIZEN
+// ============================================
+
+// Der Server rechnet gleich mit aus, ob DIESER Besucher
+// die jeweilige Notiz löschen darf. Der Browser muss also
+// nicht wissen, wem was gehört.
+app.get('/api/zettel', async function (req, res) {
+  const ich = req.benutzer ? req.benutzer.id : null;
+
+  try {
+    const ergebnis = await pool.query(
+      `SELECT id, name, nachricht, farbe, zeit, x, y, breite, hoehe, ebene,
+              (
+                $1::uuid IS NOT NULL
+                AND (benutzer_id IS NULL OR benutzer_id = $1::uuid)
+              ) AS darf_loeschen
+       FROM zettel
+       ORDER BY ebene ASC, zeit ASC`,
+      [ich]
+    );
+    res.json(ergebnis.rows);
   } catch (fehler) {
     console.error(fehler);
     res.status(500).json({ fehler: 'Datenbankfehler beim Laden.' });
@@ -51,31 +356,49 @@ app.get('/api/zettel', async function (req, res) {
 });
 
 
-// ===== ROUTE 2: Neuen Zettel anlegen =====
 app.post('/api/zettel', async function (req, res) {
-  const name = String(req.body.name || '').trim();
   const nachricht = String(req.body.nachricht || '').trim();
 
   if (nachricht === '') {
-  return res.status(400).json({ fehler: 'Muss schon was drin stehen!' });
-}
-  if (name.length > 30) {
-    return res.status(400).json({ fehler: 'Wer heißt denn so lang?!? (max. 30 Zeichen).' });
+    return res.status(400).json({ fehler: 'Bitte einen Text schreiben.' });
   }
-  if (nachricht.length > 100) {
-    return res.status(400).json({ fehler: 'Du willst mich doch verarschen? (max. 100 Zeichen).' });
+  if (nachricht.length > MAX_ZEICHEN) {
+    return res.status(400).json({
+      fehler: 'Text ist zu lang (max. ' + MAX_ZEICHEN + ' Zeichen).'
+    });
   }
+
+  // Name UND Besitzer kommen aus der Sitzung, nie aus der Anfrage
+  const name = req.benutzer ? req.benutzer.benutzername : 'Anonym';
+  const besitzer = req.benutzer ? req.benutzer.id : null;
 
   const farbe = FARBEN[Math.floor(Math.random() * FARBEN.length)];
+  const x = zahlOderNull(req.body.x, 0, MAX_X);
+  const y = zahlOderNull(req.body.y, 0, MAX_Y);
+  const breite = zahlOderNull(req.body.breite, MIN_BREITE, MAX_BREITE);
+  const hoehe = zahlOderNull(req.body.hoehe, MIN_HOEHE, MAX_HOEHE);
 
   try {
-    // $1, $2, $3 sind Platzhalter. Die Werte kommen getrennt hinterher.
-    // NIEMALS Eingaben direkt in den SQL-Text einbauen!
     const ergebnis = await pool.query(
-      'INSERT INTO zettel (name, nachricht, farbe) VALUES ($1, $2, $3) RETURNING *',
-      [name, nachricht, farbe]
+      `INSERT INTO zettel (name, nachricht, farbe, x, y, breite, hoehe, ebene, benutzer_id)
+       VALUES (
+         $1, $2, $3,
+         COALESCE($4, 20),
+         COALESCE($5, 20),
+         LEAST(COALESCE($6, 190), $8 + length($2) * $10),
+         LEAST(COALESCE($7, 130), $9 + length($2) * $11),
+         (SELECT COALESCE(MAX(ebene), 0) + 1 FROM zettel),
+         $12
+       )
+       RETURNING *`,
+      [name, nachricht, farbe, x, y, breite, hoehe,
+       GUARD_BREITE, GUARD_HOEHE, BREITE_PRO_ZEICHEN, HOEHE_PRO_ZEICHEN,
+       besitzer]
     );
+
+    alleBenachrichtigen();
     res.status(201).json(ergebnis.rows[0]);
+
   } catch (fehler) {
     console.error(fehler);
     res.status(500).json({ fehler: 'Datenbankfehler beim Speichern.' });
@@ -83,30 +406,87 @@ app.post('/api/zettel', async function (req, res) {
 });
 
 
-// ===== ROUTE 3: Einen Zettel löschen =====
-app.delete('/api/zettel/:id', async function (req, res) {
+// Verschieben und Größe darf weiterhin jeder
+app.patch('/api/zettel/:id/layout', async function (req, res) {
+  const x = zahlOderNull(req.body.x, 0, MAX_X);
+  const y = zahlOderNull(req.body.y, 0, MAX_Y);
+  const breite = zahlOderNull(req.body.breite, MIN_BREITE, MAX_BREITE);
+  const hoehe = zahlOderNull(req.body.hoehe, MIN_HOEHE, MAX_HOEHE);
+
   try {
     const ergebnis = await pool.query(
-      'DELETE FROM zettel WHERE id = $1',
-      [req.params.id]
+      `UPDATE zettel SET
+         x = COALESCE($1, x),
+         y = COALESCE($2, y),
+         breite = LEAST(COALESCE($3, breite), $6 + length(nachricht) * $8),
+         hoehe  = LEAST(COALESCE($4, hoehe),  $7 + length(nachricht) * $9),
+         ebene = (SELECT COALESCE(MAX(ebene), 0) + 1 FROM zettel)
+       WHERE id = $5
+       RETURNING id, x, y, breite, hoehe, ebene`,
+      [x, y, breite, hoehe, req.params.id,
+       GUARD_BREITE, GUARD_HOEHE, BREITE_PRO_ZEICHEN, HOEHE_PRO_ZEICHEN]
     );
 
     if (ergebnis.rowCount === 0) {
-      return res.status(404).json({ fehler: 'Zettel nicht gefunden.' });
+      return res.status(404).json({ fehler: 'Notiz nicht gefunden.' });
     }
+
+    alleBenachrichtigen();
+    res.json(ergebnis.rows[0]);
+
+  } catch (fehler) {
+    console.error(fehler);
+    return res.status(400).json({ fehler: 'Ungültige Anfrage.' });
+  }
+});
+
+
+// ===== Löschen: nur eigene Notizen =====
+app.delete('/api/zettel/:id', async function (req, res) {
+
+  if (!req.benutzer) {
+    return res.status(401).json({ fehler: 'Bitte zuerst anmelden.' });
+  }
+
+  try {
+    // Erst nachsehen, wem die Notiz gehört
+    const vorhanden = await pool.query(
+      'SELECT benutzer_id FROM zettel WHERE id = $1',
+      [req.params.id]
+    );
+
+    if (vorhanden.rowCount === 0) {
+      return res.status(404).json({ fehler: 'Notiz nicht gefunden.' });
+    }
+
+    const besitzer = vorhanden.rows[0].benutzer_id;
+
+    // Besitzerlose Notizen (von früher oder ohne Anmeldung)
+    // darf jeder Angemeldete aufräumen.
+    if (besitzer !== null && besitzer !== req.benutzer.id) {
+      return res.status(403).json({ fehler: 'Das ist nicht deine Notiz.' });
+    }
+
+    await pool.query('DELETE FROM zettel WHERE id = $1', [req.params.id]);
+
+    alleBenachrichtigen();
     res.json({ ok: true });
 
   } catch (fehler) {
-    // Passiert z.B., wenn die ID keine gültige UUID ist
     return res.status(400).json({ fehler: 'Ungültige ID.' });
   }
 });
 
 
-// ===== ROUTE 4: Alle Zettel löschen =====
+// ===== Alle eigenen Notizen löschen =====
 app.delete('/api/zettel', async function (req, res) {
+  if (!req.benutzer) {
+    return res.status(401).json({ fehler: 'Bitte zuerst anmelden.' });
+  }
+
   try {
-    await pool.query('DELETE FROM zettel');
+    await pool.query('DELETE FROM zettel WHERE benutzer_id = $1', [req.benutzer.id]);
+    alleBenachrichtigen();
     res.json({ ok: true });
   } catch (fehler) {
     console.error(fehler);
@@ -115,7 +495,6 @@ app.delete('/api/zettel', async function (req, res) {
 });
 
 
-// ===== Start: erst Tabelle prüfen, dann Server starten =====
 datenbankVorbereiten()
   .then(function () {
     app.listen(PORT, function () {
@@ -124,5 +503,5 @@ datenbankVorbereiten()
   })
   .catch(function (fehler) {
     console.error('Keine Verbindung zur Datenbank:', fehler.message);
-    process.exit(1);              // Ohne Datenbank macht Starten keinen Sinn
+    process.exit(1);
   });
