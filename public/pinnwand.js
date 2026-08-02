@@ -1,22 +1,24 @@
 // ============================================
 //  Wall of Notes
-//  Doppelklick = neue Notiz
-//  Ziehen = verschieben (kommt nach vorne)
-//  Ecke unten rechts = Breite ändern
 //
-//  Löschen darf man nur eigene Notizen. Ob das
-//  erlaubt ist, entscheidet der Server und schickt
-//  es als "darf_loeschen" mit.
+//  Jeder Monat wird in vier Abschnitte geteilt.
+//  Ältere Abschnitte sind Chronik und nur zum
+//  Ansehen. Die Wand füllt den Rahmen immer aus.
 // ============================================
 
+const rahmen = document.querySelector('#wandRahmen');
 const wand = document.querySelector('#wand');
 const statusZeile = document.querySelector('#status');
+const waendeLeiste = document.querySelector('#waendeLeiste');
+
+// Größe der gesamten Wand - muss zu style.css passen
+const WAND_BREITE = 2400;
+const WAND_HOEHE = 1200;
 
 const NOTIZ_BREITE = 190;
-const NOTIZ_HOEHE = 130;
+const NOTIZ_HOEHE = 90;
 
 const GRIFF_ZONE = 22;
-
 const MAX_ZEICHEN = 500;
 
 const MIN_BREITE = 150;
@@ -24,14 +26,27 @@ const MAX_BREITE = 520;
 const MIN_HOEHE = 90;
 const MAX_HOEHE = 460;
 
+// Notizen mit Bild dürfen breiter und höher werden
+const BILD_MIN_BREITE = 320;
+
+// Reine Befehlsbilder: schmaler Rand rundum, kein Name,
+// kein Löschknopf, keine Größenänderung
+const BILD_RAND = 0;
+const BILD_MIN_HOEHE = 40;
+
+const MAX_SKALA = 2;
+const ZOOM_SCHRITT = 1.25;
+
 // ===== Werte aus style.css, die beim Messen zählen =====
+// Links und rechts jetzt gleich - dadurch sitzt das Bild
+// mittig und der Ziehgriff genau an seiner Kante.
 const RAHMEN = 1;
-const TEXT_OBEN = 30;
+const TEXT_OBEN = 32;
 const TEXT_LINKS = 12;
-const TEXT_RECHTS = 5;
-const TEXT_UNTEN = 6;
+const TEXT_RECHTS = 12;
+const TEXT_UNTEN = 12;
 const SCROLLBAR = 6;
-const SICHERHEIT = 2;
+const SICHERHEIT = 1;
 
 const BREITEN_STUFEN = [190, 240, 300, 360, 420, 470, 520];
 
@@ -40,11 +55,20 @@ const SPIELRAUM_PRO_ZEICHEN = 1;
 const SPIELRAUM_BREITE_MAX = 220;
 
 let notizen = [];
+let waende = [];
+let aktuelleWandId = null;
+let gewaehlteWandId = null;
+
 let ziehtGerade = false;
 let schreibtGerade = false;
 let offeneSpeicherungen = 0;
 let obersteEbene = 10;
 let nachholenNoetig = false;
+
+let skala = 1;
+let versatzX = 0;
+let versatzY = 0;
+let zoomGeste = false;
 
 const hoehenSpeicher = new Map();
 const groessenSpeicher = new Map();
@@ -58,6 +82,11 @@ function statusSetzen(text) {
 }
 
 
+function nurLesen() {
+  return gewaehlteWandId !== aktuelleWandId;
+}
+
+
 function beschaeftigt() {
   return ziehtGerade || schreibtGerade || offeneSpeicherungen > 0;
 }
@@ -66,6 +95,210 @@ function beschaeftigt() {
 function begrenzen(wert, min, max) {
   return Math.min(Math.max(wert, min), max);
 }
+
+
+// ============================================
+//  ANSICHT: zoomen und verschieben
+// ============================================
+
+// Math.max = die Wand füllt den Rahmen immer aus
+function minSkala() {
+  const breite = rahmen.clientWidth / WAND_BREITE;
+  const hoehe = rahmen.clientHeight / WAND_HOEHE;
+  return Math.max(breite, hoehe);
+}
+
+
+function ansichtAnwenden() {
+  skala = begrenzen(skala, minSkala(), MAX_SKALA);
+
+  const sichtbareBreite = WAND_BREITE * skala;
+  const sichtbareHoehe = WAND_HOEHE * skala;
+
+  if (sichtbareBreite <= rahmen.clientWidth) {
+    versatzX = (rahmen.clientWidth - sichtbareBreite) / 2;
+  } else {
+    versatzX = begrenzen(versatzX, rahmen.clientWidth - sichtbareBreite, 0);
+  }
+
+  if (sichtbareHoehe <= rahmen.clientHeight) {
+    versatzY = (rahmen.clientHeight - sichtbareHoehe) / 2;
+  } else {
+    versatzY = begrenzen(versatzY, rahmen.clientHeight - sichtbareHoehe, 0);
+  }
+
+  wand.style.transform =
+    'translate(' + versatzX + 'px, ' + versatzY + 'px) scale(' + skala + ')';
+}
+
+
+function zuWand(clientX, clientY) {
+  const kasten = rahmen.getBoundingClientRect();
+  return {
+    x: (clientX - kasten.left - versatzX) / skala,
+    y: (clientY - kasten.top - versatzY) / skala
+  };
+}
+
+
+function zoomenAufPunkt(neueSkala, clientX, clientY) {
+  const kasten = rahmen.getBoundingClientRect();
+  const vorher = zuWand(clientX, clientY);
+
+  skala = begrenzen(neueSkala, minSkala(), MAX_SKALA);
+
+  versatzX = (clientX - kasten.left) - vorher.x * skala;
+  versatzY = (clientY - kasten.top) - vorher.y * skala;
+
+  ansichtAnwenden();
+}
+
+
+function allesZeigen() {
+  skala = minSkala();
+  ansichtAnwenden();
+}
+
+
+document.querySelector('#zoomRein').addEventListener('click', function () {
+  const kasten = rahmen.getBoundingClientRect();
+  zoomenAufPunkt(skala * ZOOM_SCHRITT,
+    kasten.left + rahmen.clientWidth / 2,
+    kasten.top + rahmen.clientHeight / 2);
+});
+
+document.querySelector('#zoomRaus').addEventListener('click', function () {
+  const kasten = rahmen.getBoundingClientRect();
+  zoomenAufPunkt(skala / ZOOM_SCHRITT,
+    kasten.left + rahmen.clientWidth / 2,
+    kasten.top + rahmen.clientHeight / 2);
+});
+
+document.querySelector('#zoomAlles').addEventListener('click', allesZeigen);
+
+
+rahmen.addEventListener('wheel', function (event) {
+  if (!event.ctrlKey) {
+    return;
+  }
+  event.preventDefault();
+  zoomenAufPunkt(skala * (event.deltaY < 0 ? 1.1 : 0.9), event.clientX, event.clientY);
+}, { passive: false });
+
+
+// ============================================
+//  Finger-Gesten
+// ============================================
+
+const zeiger = new Map();
+let gesteStart = null;
+
+
+function abstandVon(a, b) {
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+
+rahmen.addEventListener('pointerdown', function (event) {
+  zeiger.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+  if (zeiger.size === 2) {
+    zoomGeste = true;
+    ziehtGerade = false;
+
+    const punkte = Array.from(zeiger.values());
+    const mitteX = (punkte[0].x + punkte[1].x) / 2;
+    const mitteY = (punkte[0].y + punkte[1].y) / 2;
+
+    gesteStart = {
+      abstand: abstandVon(punkte[0], punkte[1]),
+      skala: skala,
+      mitte: zuWand(mitteX, mitteY)
+    };
+  }
+}, true);
+
+
+rahmen.addEventListener('pointermove', function (event) {
+  if (!zeiger.has(event.pointerId)) {
+    return;
+  }
+
+  zeiger.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+  if (zeiger.size !== 2 || !gesteStart || gesteStart.abstand === 0) {
+    return;
+  }
+
+  event.preventDefault();
+
+  const punkte = Array.from(zeiger.values());
+  const jetzt = abstandVon(punkte[0], punkte[1]);
+
+  const kasten = rahmen.getBoundingClientRect();
+  const mitteX = (punkte[0].x + punkte[1].x) / 2;
+  const mitteY = (punkte[0].y + punkte[1].y) / 2;
+
+  skala = begrenzen(gesteStart.skala * (jetzt / gesteStart.abstand),
+                    minSkala(), MAX_SKALA);
+
+  versatzX = (mitteX - kasten.left) - gesteStart.mitte.x * skala;
+  versatzY = (mitteY - kasten.top) - gesteStart.mitte.y * skala;
+
+  ansichtAnwenden();
+}, true);
+
+
+function gesteBeenden(event) {
+  zeiger.delete(event.pointerId);
+
+  if (zeiger.size < 2) {
+    gesteStart = null;
+
+    if (zeiger.size === 0) {
+      zoomGeste = false;
+    }
+  }
+}
+
+rahmen.addEventListener('pointerup', gesteBeenden, true);
+rahmen.addEventListener('pointercancel', gesteBeenden, true);
+
+
+wand.addEventListener('pointerdown', function (event) {
+  if (event.target !== wand || zeiger.size > 1) {
+    return;
+  }
+
+  const startX = event.clientX;
+  const startY = event.clientY;
+  const startVersatzX = versatzX;
+  const startVersatzY = versatzY;
+
+  function schieben(bewegEvent) {
+    if (zoomGeste) {
+      return;
+    }
+    versatzX = startVersatzX + (bewegEvent.clientX - startX);
+    versatzY = startVersatzY + (bewegEvent.clientY - startY);
+    ansichtAnwenden();
+  }
+
+  function schiebenFertig() {
+    window.removeEventListener('pointermove', schieben);
+    window.removeEventListener('pointerup', schiebenFertig);
+    window.removeEventListener('pointercancel', schiebenFertig);
+  }
+
+  window.addEventListener('pointermove', schieben);
+  window.addEventListener('pointerup', schiebenFertig);
+  window.addEventListener('pointercancel', schiebenFertig);
+});
+
+
+window.addEventListener('resize', ansichtAnwenden);
 
 
 // ============================================
@@ -91,7 +324,7 @@ function messerVorbereiten() {
   }
 
   if (!messNotiz.isConnected) {
-    wand.appendChild(messNotiz);
+    rahmen.appendChild(messNotiz);
   }
 }
 
@@ -158,6 +391,258 @@ function groesseFuerText(text) {
 
 
 // ============================================
+//  Links und Bilder im Notiztext
+// ============================================
+
+const URL_MUSTER = /(https?:\/\/[^\s]+)/g;
+const BILD_ENDUNGEN = /\.(png|jpe?g|gif|webp|avif|bmp|svg)(\?.*)?$/i;
+
+
+// ===== Befehle =====
+// Wer "/merz" schreibt, bekommt das Bild statt des Textes.
+// Neue Befehle einfach hier ergänzen - das Bild muss in
+// public/bilder/ liegen.
+const BEFEHLE = {
+  '/merz': '/bilder/merz.png',
+  '/trump': '/bilder/trump.png'
+};
+
+
+// Findet Adressen UND Befehle in einem Durchgang.
+// Die Adresse steht zuerst, damit die Schrägstriche in
+// "https://" nicht als Befehl missverstanden werden.
+const TEILE_MUSTER = /(https?:\/\/[^\s]+|\/[a-zA-Z0-9_-]+)/g;
+
+
+// Liefert die Bildadresse für einen Textbaustein -
+// oder null, wenn es kein Bild ist.
+function bildAdresseVon(teil) {
+  const befehl = BEFEHLE[teil.toLowerCase()];
+
+  if (befehl) {
+    return befehl;
+  }
+
+  if (/^https?:\/\//i.test(teil) && BILD_ENDUNGEN.test(teil)) {
+    return teil;
+  }
+
+  return null;
+}
+
+
+function hatBild(nachricht) {
+  const treffer = nachricht.match(TEILE_MUSTER);
+
+  if (!treffer) {
+    return false;
+  }
+  return treffer.some(function (teil) {
+    return bildAdresseVon(teil) !== null;
+  });
+}
+
+
+// Besteht die Notiz NUR aus einem Befehl?
+// Dann wird sie als reines Bild dargestellt.
+function istNurBefehl(nachricht) {
+  return BEFEHLE[nachricht.trim().toLowerCase()] !== undefined;
+}
+
+
+function linkBauen(adresse) {
+  const link = document.createElement('a');
+  link.className = 'notizLink';
+  link.href = adresse;
+  link.textContent = adresse;
+  link.target = '_blank';
+  link.rel = 'noopener noreferrer';
+  return link;
+}
+
+
+// Wie hoch ist der Inhalt wirklich?
+// Der Absatz wird kurz freigestellt, gemessen und
+// wieder zurückgesetzt. So erfährt man auch, wenn
+// er KLEINER ist als der Platz - anders als bei
+// scrollHeight allein.
+function inhaltHoehe(element) {
+  const altBottom = element.style.bottom;
+  const altHeight = element.style.height;
+  const altOverflow = element.style.overflowY;
+
+  element.style.bottom = 'auto';
+  element.style.height = 'auto';
+  element.style.overflowY = 'visible';
+
+  const hoehe = element.scrollHeight;
+
+  element.style.bottom = altBottom;
+  element.style.height = altHeight;
+  element.style.overflowY = altOverflow;
+
+  return hoehe;
+}
+
+
+// Setzt die Notizhöhe exakt auf das, was der Inhalt braucht.
+// Wächst UND schrumpft - dadurch bleibt bei Bildern kein
+// leerer Raum mehr übrig.
+function hoeheAnpassen(notiz, inhalt) {
+  // Reine Befehlsbilder haben rundum denselben schmalen Rand,
+  // normale Notizen brauchen oben Platz für den Namen.
+  const nurBild = notiz.classList.contains('nurBild');
+
+  const oben = nurBild ? BILD_RAND : TEXT_OBEN;
+  const unten = nurBild ? BILD_RAND : TEXT_UNTEN;
+
+  const noetig = inhaltHoehe(inhalt)
+               + 2 * RAHMEN + oben + unten + SICHERHEIT;
+
+  const kleinste = nurBild ? BILD_MIN_HOEHE : MIN_HOEHE;
+
+  notiz.style.height = begrenzen(Math.ceil(noetig), kleinste, MAX_HOEHE) + 'px';
+}
+
+
+// Baut den Notizinhalt aus Text, Links und Bildern.
+// Alles über createElement und createTextNode - niemals
+// über innerHTML, sonst könnte jemand HTML einschleusen.
+function inhaltAufbauen(absatz, nachricht, notiz) {
+  const teile = nachricht.split(TEILE_MUSTER);
+
+  teile.forEach(function (teil) {
+    if (!teil) {
+      return;
+    }
+
+    const bildAdresse = bildAdresseVon(teil);
+
+    // Befehl oder Bildadresse -> als Bild anzeigen
+    if (bildAdresse) {
+      const bild = document.createElement('img');
+      bild.className = 'notizBild';
+      bild.src = bildAdresse;
+      bild.alt = teil;
+      bild.loading = 'lazy';
+      bild.referrerPolicy = 'no-referrer';
+
+      // Sonst startet der Browser sein eigenes Bild-Ziehen
+      // und unser Verschieben bekommt keine Ereignisse mehr
+      bild.draggable = false;
+
+      // Bilder laden verzögert - danach Höhe neu setzen
+      bild.addEventListener('load', function () {
+        hoeheAnpassen(notiz, absatz);
+      });
+
+      // Bild fehlt -> stattdessen den ursprünglichen Text zeigen
+      bild.addEventListener('error', function () {
+        bild.replaceWith(document.createTextNode(teil));
+        hoeheAnpassen(notiz, absatz);
+      });
+
+      absatz.appendChild(bild);
+      return;
+    }
+
+    // Sonstiger Link -> anklickbar
+    if (/^https?:\/\//i.test(teil)) {
+      absatz.appendChild(linkBauen(teil));
+      return;
+    }
+
+    // Alles andere ist normaler Text
+    absatz.appendChild(document.createTextNode(teil));
+  });
+}
+
+
+// ============================================
+//  WÄNDE
+// ============================================
+
+function zeitraumText(beginn, ende) {
+  const einstellung = { day: 'numeric', month: 'short' };
+  const von = new Date(beginn);
+  const bis = new Date(new Date(ende).getTime() - 1);
+
+  return von.toLocaleDateString('de-DE', einstellung)
+       + ' – ' + bis.toLocaleDateString('de-DE', einstellung);
+}
+
+
+async function waendeLaden() {
+  try {
+    const antwort = await fetch('/api/waende');
+
+    if (!antwort.ok) {
+      throw new Error('Status ' + antwort.status);
+    }
+
+    const daten = await antwort.json();
+    waende = daten.waende;
+    aktuelleWandId = daten.aktuell;
+
+    const gibtsNoch = waende.some(function (w) {
+      return w.id === gewaehlteWandId;
+    });
+
+    if (!gewaehlteWandId || !gibtsNoch) {
+      gewaehlteWandId = aktuelleWandId;
+    }
+
+    waendeAnzeigen();
+
+  } catch (fehler) {
+    statusSetzen('Wände konnten nicht geladen werden.');
+    console.error(fehler);
+  }
+}
+
+
+function waendeAnzeigen() {
+  waendeLeiste.innerHTML = '';
+
+  waende.forEach(function (eintrag) {
+    const knopf = document.createElement('button');
+    knopf.className = 'wandKnopf';
+
+    if (eintrag.id === gewaehlteWandId) {
+      knopf.classList.add('gewaehlt');
+    }
+    if (eintrag.id === aktuelleWandId) {
+      knopf.classList.add('istAktuell');
+    }
+
+    const titel = document.createElement('span');
+    titel.className = 'wandTitel';
+    titel.textContent = zeitraumText(eintrag.beginn, eintrag.ende);
+
+    const anzahl = document.createElement('span');
+    anzahl.className = 'wandZeitraum';
+    anzahl.textContent = eintrag.anzahl + ' Notizen';
+
+    knopf.appendChild(titel);
+    knopf.appendChild(anzahl);
+
+    knopf.addEventListener('click', function () {
+      if (gewaehlteWandId === eintrag.id) {
+        return;
+      }
+      gewaehlteWandId = eintrag.id;
+      waendeAnzeigen();
+      notizenHolen();
+    });
+
+    waendeLeiste.appendChild(knopf);
+  });
+
+  rahmen.classList.toggle('nurLesen', nurLesen());
+}
+
+
+// ============================================
 //  Daten vom Server
 // ============================================
 
@@ -167,15 +652,19 @@ async function notizenHolen() {
     return;
   }
 
+  if (!gewaehlteWandId) {
+    return;
+  }
+
   try {
-    const antwort = await fetch('/api/zettel');
+    const antwort = await fetch('/api/zettel?wand=' + encodeURIComponent(gewaehlteWandId));
 
     if (!antwort.ok) {
       throw new Error('Status ' + antwort.status);
     }
 
     notizen = await antwort.json();
-    statusSetzen('');
+    statusSetzen(nurLesen() ? 'Chronik – nur zum Ansehen' : '');
     anzeigen();
 
   } catch (fehler) {
@@ -196,6 +685,11 @@ function nachholenPruefen() {
 async function notizSpeichern(text, x, y) {
   const groesse = groesseFuerText(text);
 
+  // Bilder brauchen von Anfang an mehr Platz
+  const breite = hatBild(text)
+    ? Math.max(groesse.breite, BILD_MIN_BREITE)
+    : groesse.breite;
+
   try {
     const antwort = await fetch('/api/zettel', {
       method: 'POST',
@@ -204,7 +698,7 @@ async function notizSpeichern(text, x, y) {
         nachricht: text,
         x: x,
         y: y,
-        breite: groesse.breite,
+        breite: breite,
         hoehe: groesse.hoehe
       })
     });
@@ -286,6 +780,7 @@ async function notizLoeschen(id) {
       return;
     }
 
+    await waendeLaden();
     await notizenHolen();
 
   } catch (fehler) {
@@ -304,51 +799,76 @@ function anzeigen() {
   notizen.forEach(function (eintrag, nummer) {
 
     const auto = groesseFuerText(eintrag.nachricht);
+    const mitBild = hatBild(eintrag.nachricht);
+    const nurBild = istNurBefehl(eintrag.nachricht);
 
-    const breite = begrenzen(eintrag.breite, MIN_BREITE, auto.maxBreite);
-    const hoehe = passendeHoehe(eintrag.nachricht, breite);
+    // Bildnotizen dürfen bis zur vollen Breite gezogen werden.
+    // Reine Befehlsbilder behalten ihre Größe.
+    const maxBreite = mitBild ? MAX_BREITE : auto.maxBreite;
+
+    const breite = begrenzen(eintrag.breite, MIN_BREITE, maxBreite);
 
     const notiz = document.createElement('div');
-    notiz.className = 'notiz ' + eintrag.farbe;
+    notiz.className = 'notiz ' + eintrag.farbe + (nurBild ? ' nurBild' : '');
 
-    notiz.style.left = eintrag.x + 'px';
-    notiz.style.top = eintrag.y + 'px';
+    notiz.style.left = begrenzen(eintrag.x, 0, WAND_BREITE - breite) + 'px';
+    notiz.style.top = begrenzen(eintrag.y, 0, WAND_HOEHE - MIN_HOEHE) + 'px';
     notiz.style.width = breite + 'px';
-    notiz.style.height = hoehe + 'px';
+    notiz.style.height = passendeHoehe(eintrag.nachricht, breite) + 'px';
 
     notiz.style.zIndex = 10 + nummer;
     obersteEbene = Math.max(obersteEbene, 10 + nummer);
 
-    const autor = document.createElement('small');
-    autor.textContent = eintrag.name;
-
     const text = document.createElement('p');
-    text.textContent = eintrag.nachricht;
+    inhaltAufbauen(text, eintrag.nachricht, notiz);
 
-    // Das x gibt es nur, wenn der Server es erlaubt
-    if (eintrag.darf_loeschen) {
-      const loeschen = document.createElement('button');
-      loeschen.className = 'loeschen';
-      loeschen.textContent = '×';
-      loeschen.title = 'Notiz löschen';
-      loeschen.addEventListener('click', function (event) {
-        event.stopPropagation();
+    // Reine Befehlsbilder: kein Name, kein Löschknopf.
+    // Gelöscht wird dort per Doppelklick.
+    if (!nurBild) {
+      const autor = document.createElement('small');
+      autor.textContent = eintrag.name;
+      notiz.appendChild(autor);
+
+      if (eintrag.darf_loeschen) {
+        const loeschen = document.createElement('button');
+        loeschen.className = 'loeschen';
+        loeschen.textContent = '×';
+        loeschen.title = 'Notiz löschen';
+        loeschen.addEventListener('click', function (event) {
+          event.stopPropagation();
+          notizLoeschen(eintrag.id);
+        });
+        notiz.appendChild(loeschen);
+      }
+
+    } else if (eintrag.darf_loeschen && !nurLesen()) {
+      notiz.title = 'Doppelklick zum Entfernen';
+      notiz.addEventListener('dblclick', function (event) {
+        event.stopPropagation();     // nicht als neue Notiz werten
         notizLoeschen(eintrag.id);
       });
-      notiz.appendChild(loeschen);
     }
 
-    notiz.appendChild(autor);
     notiz.appendChild(text);
 
     wand.appendChild(notiz);
 
-    eintrag.breite = breite;
-    eintrag.hoehe = hoehe;
-    eintrag.maxBreite = auto.maxBreite;
+    // Höhe exakt auf den Inhalt setzen (wächst und schrumpft)
+    hoeheAnpassen(notiz, text);
 
-    ziehenAktivieren(notiz, eintrag);
+    eintrag.breite = breite;
+    eintrag.hoehe = notiz.offsetHeight;
+    eintrag.maxBreite = maxBreite;
+    eintrag.mitBild = mitBild;
+    eintrag.nurBild = nurBild;
+    eintrag.absatz = text;
+
+    if (!nurLesen()) {
+      ziehenAktivieren(notiz, eintrag);
+    }
   });
+
+  ansichtAnwenden();
 }
 
 
@@ -364,13 +884,25 @@ function ziehenAktivieren(element, eintrag) {
       return;
     }
 
+    // Links anklickbar lassen
+    if (event.target.tagName === 'A') {
+      return;
+    }
+
+    if (zoomGeste || zeiger.size > 1) {
+      return;
+    }
+
     obersteEbene = obersteEbene + 1;
     element.style.zIndex = obersteEbene;
 
-    const rahmen = element.getBoundingClientRect();
+    const kasten = element.getBoundingClientRect();
 
-    const inEcke = event.clientX > rahmen.right - GRIFF_ZONE &&
-                   event.clientY > rahmen.bottom - GRIFF_ZONE;
+    // Reine Befehlsbilder behalten ihre Größe -
+    // dort gibt es keinen Ziehgriff.
+    const inEcke = !eintrag.nurBild &&
+                   event.clientX > kasten.right - GRIFF_ZONE * skala &&
+                   event.clientY > kasten.bottom - GRIFF_ZONE * skala;
 
     ziehtGerade = true;
     element.setPointerCapture(event.pointerId);
@@ -382,14 +914,20 @@ function ziehenAktivieren(element, eintrag) {
       const startBreite = element.offsetWidth;
 
       function breiteBewegen(bewegEvent) {
-        let neueBreite = Math.round(startBreite + (bewegEvent.clientX - startX));
-        neueBreite = begrenzen(neueBreite, MIN_BREITE, eintrag.maxBreite);
+        if (zoomGeste) {
+          return;
+        }
 
-        const maxPlatz = wand.clientWidth - eintrag.x;
-        neueBreite = Math.min(neueBreite, Math.max(MIN_BREITE, maxPlatz));
+        const verschiebung = (bewegEvent.clientX - startX) / skala;
+
+        let neueBreite = Math.round(startBreite + verschiebung);
+        neueBreite = begrenzen(neueBreite, MIN_BREITE, eintrag.maxBreite);
+        neueBreite = Math.min(neueBreite, WAND_BREITE - eintrag.x);
 
         element.style.width = neueBreite + 'px';
-        element.style.height = passendeHoehe(eintrag.nachricht, neueBreite) + 'px';
+
+        // Höhe folgt dem Inhalt - bei Bildern und bei Text
+        hoeheAnpassen(element, eintrag.absatz);
       }
 
       function breiteFertig() {
@@ -412,20 +950,26 @@ function ziehenAktivieren(element, eintrag) {
     }
 
     // ---------- Fall 2: verschieben ----------
-    const wandRahmen = wand.getBoundingClientRect();
-    const griffX = event.clientX - rahmen.left;
-    const griffY = event.clientY - rahmen.top;
+    const start = zuWand(event.clientX, event.clientY);
+    const griffX = start.x - eintrag.x;
+    const griffY = start.y - eintrag.y;
 
     let letzteX = eintrag.x;
     let letzteY = eintrag.y;
 
 
     function bewegen(bewegEvent) {
-      let neuX = bewegEvent.clientX - wandRahmen.left - griffX;
-      let neuY = bewegEvent.clientY - wandRahmen.top - griffY;
+      if (zoomGeste) {
+        return;
+      }
 
-      neuX = begrenzen(neuX, 0, wand.clientWidth - element.offsetWidth);
-      neuY = begrenzen(neuY, 0, wand.clientHeight - element.offsetHeight);
+      const punkt = zuWand(bewegEvent.clientX, bewegEvent.clientY);
+
+      let neuX = punkt.x - griffX;
+      let neuY = punkt.y - griffY;
+
+      neuX = begrenzen(neuX, 0, WAND_BREITE - element.offsetWidth);
+      neuY = begrenzen(neuY, 0, WAND_HOEHE - element.offsetHeight);
 
       neuX = Math.round(neuX);
       neuY = Math.round(neuY);
@@ -470,19 +1014,49 @@ function notizfeldOeffnen(x, y) {
   notiz.className = 'notiz neu';
   notiz.style.left = x + 'px';
   notiz.style.top = y + 'px';
-  notiz.style.width = NOTIZ_BREITE + 'px';
-  notiz.style.height = NOTIZ_HOEHE + 'px';
 
   obersteEbene = obersteEbene + 1;
   notiz.style.zIndex = obersteEbene;
+
+  const autor = document.createElement('small');
+  autor.textContent =
+    (typeof angemeldeterName !== 'undefined' && angemeldeterName)
+      ? angemeldeterName
+      : 'Anonym';
 
   const feld = document.createElement('textarea');
   feld.maxLength = MAX_ZEICHEN;
   feld.placeholder = 'Text eingeben...';
 
+
+  // Breite aus der Textlänge, Höhe direkt aus dem
+  // Eingabefeld gemessen - dadurch sitzt es exakt.
+  function groesseAnpassen() {
+    const text = feld.value === '' ? ' ' : feld.value;
+
+    const auto = groesseFuerText(text);
+    let breite = auto.breite;
+
+    if (hatBild(feld.value)) {
+      breite = Math.max(breite, BILD_MIN_BREITE);
+    }
+
+    breite = Math.min(breite, WAND_BREITE - x);
+    notiz.style.width = breite + 'px';
+
+    hoeheAnpassen(notiz, feld);
+  }
+
+  feld.addEventListener('input', groesseAnpassen);
+
+
+  notiz.appendChild(autor);
   notiz.appendChild(feld);
   wand.appendChild(notiz);
+
+  groesseAnpassen();
   feld.focus();
+
 
   let schonFertig = false;
 
@@ -502,6 +1076,7 @@ function notizfeldOeffnen(x, y) {
     }
 
     await notizSpeichern(text, x, y);
+    await waendeLaden();
   }
 
   feld.addEventListener('blur', fertig);
@@ -524,12 +1099,15 @@ wand.addEventListener('dblclick', function (event) {
     return;
   }
 
-  const rahmen = wand.getBoundingClientRect();
-  let x = event.clientX - rahmen.left - NOTIZ_BREITE / 2;
-  let y = event.clientY - rahmen.top - NOTIZ_HOEHE / 2;
+  if (nurLesen()) {
+    statusSetzen('Ältere Wände sind nur zum Ansehen.');
+    return;
+  }
 
-  x = begrenzen(x, 0, wand.clientWidth - NOTIZ_BREITE);
-  y = begrenzen(y, 0, wand.clientHeight - NOTIZ_HOEHE);
+  const punkt = zuWand(event.clientX, event.clientY);
+
+  const x = begrenzen(punkt.x - NOTIZ_BREITE / 2, 0, WAND_BREITE - NOTIZ_BREITE);
+  const y = begrenzen(punkt.y - NOTIZ_HOEHE / 2, 0, WAND_HOEHE - NOTIZ_HOEHE);
 
   notizfeldOeffnen(Math.round(x), Math.round(y));
 });
@@ -550,7 +1128,7 @@ ereignisse.addEventListener('error', function () {
 });
 
 window.addEventListener('focus', function () {
-  notizenHolen();
+  waendeLaden().then(notizenHolen);
 });
 
 
@@ -558,4 +1136,10 @@ window.addEventListener('focus', function () {
 //  Start
 // ============================================
 
-notizenHolen();
+allesZeigen();
+
+waendeLaden().then(function () {
+  notizenHolen();
+});
+
+setInterval(waendeLaden, 60 * 60 * 1000);

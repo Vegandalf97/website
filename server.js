@@ -16,6 +16,13 @@ app.set('trust proxy', 1);
 
 const FARBEN = ['gelb', 'gruen', 'blau', 'lila', 'rot', 'orange', 'tuerkis'];
 
+// ===== Wände =====
+// Jeder Monat wird in vier Abschnitte geteilt:
+//   1.-7. | 8.-14. | 15.-21. | 22. bis Monatsende
+// Der letzte ist je nach Monat 7 bis 10 Tage lang.
+const MAX_WAENDE = 4;                    // vier Abschnitte = etwa ein Monat
+const ZEITZONE = 'Europe/Berlin';        // Monatswechsel nach deutscher Zeit
+
 // ===== Grenzen =====
 const MAX_X = 4000;
 const MAX_Y = 4000;
@@ -115,7 +122,6 @@ async function datenbankVorbereiten() {
   await pool.query(`ALTER TABLE zettel
     ADD COLUMN IF NOT EXISTS ebene INTEGER NOT NULL DEFAULT 0`);
 
-  // ===== Benutzerkonten =====
   await pool.query(`
     CREATE TABLE IF NOT EXISTS benutzer (
       id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -138,17 +144,114 @@ async function datenbankVorbereiten() {
     )
   `);
 
-  // ===== Wem gehört eine Notiz? =====
-  // Diese Spalte MUSS nach der Tabelle benutzer angelegt werden,
-  // weil sie darauf verweist.
-  // ON DELETE SET NULL: wird ein Konto gelöscht, bleiben die
-  // Notizen bestehen und gelten dann als besitzerlos.
   await pool.query(`
     ALTER TABLE zettel
       ADD COLUMN IF NOT EXISTS benutzer_id UUID REFERENCES benutzer(id) ON DELETE SET NULL
   `);
 
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS waende (
+      id     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      nummer SERIAL,
+      beginn TIMESTAMPTZ NOT NULL,
+      ende   TIMESTAMPTZ NOT NULL
+    )
+  `);
+
+  // ON DELETE CASCADE: verschwindet eine Wand, gehen ihre Notizen mit
+  await pool.query(`
+    ALTER TABLE zettel
+      ADD COLUMN IF NOT EXISTS wand_id UUID REFERENCES waende(id) ON DELETE CASCADE
+  `);
+
   console.log('Datenbank bereit.');
+}
+
+
+// ============================================
+//  Zu welchem Monatsabschnitt gehört ein Zeitpunkt?
+//
+//  1.-7. | 8.-14. | 15.-21. | 22. bis Monatsende
+//
+//  Gerechnet wird in deutscher Ortszeit, damit ein
+//  Monat auch um Mitternacht deutscher Zeit wechselt
+//  und nicht irgendwann nachts nach Serverzeit.
+// ============================================
+async function abschnittFuer(zeitpunkt) {
+  const ergebnis = await pool.query(
+    `SELECT (b AT TIME ZONE $2) AS beginn,
+            (e AT TIME ZONE $2) AS ende
+     FROM (
+       SELECT
+         monatsanfang + (abschnitt * INTERVAL '7 days') AS b,
+         CASE WHEN abschnitt < 3
+              THEN monatsanfang + ((abschnitt + 1) * INTERVAL '7 days')
+              ELSE monatsanfang + INTERVAL '1 month'
+         END AS e
+       FROM (
+         SELECT
+           date_trunc('month', ortszeit) AS monatsanfang,
+           LEAST(3, floor((EXTRACT(day FROM ortszeit)::int - 1) / 7))::int AS abschnitt
+         FROM (SELECT ($1::timestamptz AT TIME ZONE $2) AS ortszeit) AS t
+       ) AS x
+     ) AS y`,
+    [zeitpunkt, ZEITZONE]
+  );
+
+  return ergebnis.rows[0];
+}
+
+
+// ============================================
+//  WÄNDE PFLEGEN
+// ============================================
+async function wandPflegen() {
+  const jetzt = await abschnittFuer(new Date());
+
+  let ergebnis = await pool.query(
+    'SELECT * FROM waende ORDER BY beginn DESC LIMIT 1'
+  );
+  let neueste = ergebnis.rows[0];
+
+  // Allererster Start: Wand für den laufenden Abschnitt anlegen
+  // und die vorhandenen Notizen hineinlegen
+  if (!neueste) {
+    neueste = (await pool.query(
+      'INSERT INTO waende (beginn, ende) VALUES ($1, $2) RETURNING *',
+      [jetzt.beginn, jetzt.ende]
+    )).rows[0];
+
+    await pool.query(
+      'UPDATE zettel SET wand_id = $1 WHERE wand_id IS NULL',
+      [neueste.id]
+    );
+  }
+
+  // Ist der Abschnitt vorbei, kommt der nächste dazu.
+  // Sein Beginn ist genau das Ende des alten - keine Lücken.
+  let schutz = 0;
+
+  while (new Date(neueste.ende) <= new Date() && schutz < 100) {
+    const naechster = await abschnittFuer(neueste.ende);
+
+    neueste = (await pool.query(
+      'INSERT INTO waende (beginn, ende) VALUES ($1, $2) RETURNING *',
+      [naechster.beginn, naechster.ende]
+    )).rows[0];
+
+    schutz = schutz + 1;
+  }
+
+  // Nur die neuesten MAX_WAENDE behalten
+  await pool.query(
+    `DELETE FROM waende
+     WHERE id NOT IN (
+       SELECT id FROM waende ORDER BY beginn DESC LIMIT $1
+     )`,
+    [MAX_WAENDE]
+  );
+
+  return neueste;
 }
 
 
@@ -328,30 +431,79 @@ app.post('/api/logout', async function (req, res) {
 
 
 // ============================================
+//  WÄNDE
+// ============================================
+
+app.get('/api/waende', async function (req, res) {
+  try {
+    const aktuell = await wandPflegen();
+
+    const ergebnis = await pool.query(
+      `SELECT w.id, w.nummer, w.beginn, w.ende,
+              (SELECT COUNT(*) FROM zettel z WHERE z.wand_id = w.id) AS anzahl
+       FROM waende w
+       ORDER BY w.beginn DESC`
+    );
+
+    res.json({
+      aktuell: aktuell.id,
+      waende: ergebnis.rows
+    });
+
+  } catch (fehler) {
+    console.error(fehler);
+    res.status(500).json({ fehler: 'Wände konnten nicht geladen werden.' });
+  }
+});
+
+
+// Nur die aktuelle Wand ist bearbeitbar - ältere sind Chronik
+async function istAktuelleWand(zettelId, aktuellId) {
+  const ergebnis = await pool.query(
+    'SELECT wand_id, benutzer_id FROM zettel WHERE id = $1',
+    [zettelId]
+  );
+
+  if (ergebnis.rowCount === 0) {
+    return { gefunden: false };
+  }
+
+  return {
+    gefunden: true,
+    aktuell: ergebnis.rows[0].wand_id === aktuellId,
+    besitzer: ergebnis.rows[0].benutzer_id
+  };
+}
+
+
+// ============================================
 //  NOTIZEN
 // ============================================
 
-// Der Server rechnet gleich mit aus, ob DIESER Besucher
-// die jeweilige Notiz löschen darf. Der Browser muss also
-// nicht wissen, wem was gehört.
 app.get('/api/zettel', async function (req, res) {
-  const ich = req.benutzer ? req.benutzer.id : null;
-
   try {
+    const aktuell = await wandPflegen();
+    const gewaehlt = req.query.wand ? String(req.query.wand) : aktuell.id;
+    const ich = req.benutzer ? req.benutzer.id : null;
+
     const ergebnis = await pool.query(
       `SELECT id, name, nachricht, farbe, zeit, x, y, breite, hoehe, ebene,
               (
                 $1::uuid IS NOT NULL
                 AND (benutzer_id IS NULL OR benutzer_id = $1::uuid)
+                AND wand_id = $3::uuid
               ) AS darf_loeschen
        FROM zettel
+       WHERE wand_id = $2::uuid
        ORDER BY ebene ASC, zeit ASC`,
-      [ich]
+      [ich, gewaehlt, aktuell.id]
     );
+
     res.json(ergebnis.rows);
+
   } catch (fehler) {
     console.error(fehler);
-    res.status(500).json({ fehler: 'Datenbankfehler beim Laden.' });
+    res.status(400).json({ fehler: 'Diese Wand gibt es nicht.' });
   }
 });
 
@@ -368,7 +520,6 @@ app.post('/api/zettel', async function (req, res) {
     });
   }
 
-  // Name UND Besitzer kommen aus der Sitzung, nie aus der Anfrage
   const name = req.benutzer ? req.benutzer.benutzername : 'Anonym';
   const besitzer = req.benutzer ? req.benutzer.id : null;
 
@@ -379,21 +530,24 @@ app.post('/api/zettel', async function (req, res) {
   const hoehe = zahlOderNull(req.body.hoehe, MIN_HOEHE, MAX_HOEHE);
 
   try {
+    const aktuell = await wandPflegen();
+
     const ergebnis = await pool.query(
-      `INSERT INTO zettel (name, nachricht, farbe, x, y, breite, hoehe, ebene, benutzer_id)
+      `INSERT INTO zettel
+         (name, nachricht, farbe, x, y, breite, hoehe, ebene, benutzer_id, wand_id)
        VALUES (
          $1, $2, $3,
          COALESCE($4, 20),
          COALESCE($5, 20),
          LEAST(COALESCE($6, 190), $8 + length($2) * $10),
          LEAST(COALESCE($7, 130), $9 + length($2) * $11),
-         (SELECT COALESCE(MAX(ebene), 0) + 1 FROM zettel),
-         $12
+         (SELECT COALESCE(MAX(ebene), 0) + 1 FROM zettel WHERE wand_id = $13),
+         $12, $13
        )
        RETURNING *`,
       [name, nachricht, farbe, x, y, breite, hoehe,
        GUARD_BREITE, GUARD_HOEHE, BREITE_PRO_ZEICHEN, HOEHE_PRO_ZEICHEN,
-       besitzer]
+       besitzer, aktuell.id]
     );
 
     alleBenachrichtigen();
@@ -406,7 +560,6 @@ app.post('/api/zettel', async function (req, res) {
 });
 
 
-// Verschieben und Größe darf weiterhin jeder
 app.patch('/api/zettel/:id/layout', async function (req, res) {
   const x = zahlOderNull(req.body.x, 0, MAX_X);
   const y = zahlOderNull(req.body.y, 0, MAX_Y);
@@ -414,22 +567,29 @@ app.patch('/api/zettel/:id/layout', async function (req, res) {
   const hoehe = zahlOderNull(req.body.hoehe, MIN_HOEHE, MAX_HOEHE);
 
   try {
+    const aktuell = await wandPflegen();
+    const info = await istAktuelleWand(req.params.id, aktuell.id);
+
+    if (!info.gefunden) {
+      return res.status(404).json({ fehler: 'Notiz nicht gefunden.' });
+    }
+    if (!info.aktuell) {
+      return res.status(403).json({ fehler: 'Ältere Wände sind nur zum Ansehen.' });
+    }
+
     const ergebnis = await pool.query(
       `UPDATE zettel SET
          x = COALESCE($1, x),
          y = COALESCE($2, y),
          breite = LEAST(COALESCE($3, breite), $6 + length(nachricht) * $8),
          hoehe  = LEAST(COALESCE($4, hoehe),  $7 + length(nachricht) * $9),
-         ebene = (SELECT COALESCE(MAX(ebene), 0) + 1 FROM zettel)
+         ebene = (SELECT COALESCE(MAX(ebene), 0) + 1 FROM zettel WHERE wand_id = $10)
        WHERE id = $5
        RETURNING id, x, y, breite, hoehe, ebene`,
       [x, y, breite, hoehe, req.params.id,
-       GUARD_BREITE, GUARD_HOEHE, BREITE_PRO_ZEICHEN, HOEHE_PRO_ZEICHEN]
+       GUARD_BREITE, GUARD_HOEHE, BREITE_PRO_ZEICHEN, HOEHE_PRO_ZEICHEN,
+       aktuell.id]
     );
-
-    if (ergebnis.rowCount === 0) {
-      return res.status(404).json({ fehler: 'Notiz nicht gefunden.' });
-    }
 
     alleBenachrichtigen();
     res.json(ergebnis.rows[0]);
@@ -441,7 +601,6 @@ app.patch('/api/zettel/:id/layout', async function (req, res) {
 });
 
 
-// ===== Löschen: nur eigene Notizen =====
 app.delete('/api/zettel/:id', async function (req, res) {
 
   if (!req.benutzer) {
@@ -449,21 +608,16 @@ app.delete('/api/zettel/:id', async function (req, res) {
   }
 
   try {
-    // Erst nachsehen, wem die Notiz gehört
-    const vorhanden = await pool.query(
-      'SELECT benutzer_id FROM zettel WHERE id = $1',
-      [req.params.id]
-    );
+    const aktuell = await wandPflegen();
+    const info = await istAktuelleWand(req.params.id, aktuell.id);
 
-    if (vorhanden.rowCount === 0) {
+    if (!info.gefunden) {
       return res.status(404).json({ fehler: 'Notiz nicht gefunden.' });
     }
-
-    const besitzer = vorhanden.rows[0].benutzer_id;
-
-    // Besitzerlose Notizen (von früher oder ohne Anmeldung)
-    // darf jeder Angemeldete aufräumen.
-    if (besitzer !== null && besitzer !== req.benutzer.id) {
+    if (!info.aktuell) {
+      return res.status(403).json({ fehler: 'Ältere Wände sind nur zum Ansehen.' });
+    }
+    if (info.besitzer !== null && info.besitzer !== req.benutzer.id) {
       return res.status(403).json({ fehler: 'Das ist nicht deine Notiz.' });
     }
 
@@ -478,16 +632,22 @@ app.delete('/api/zettel/:id', async function (req, res) {
 });
 
 
-// ===== Alle eigenen Notizen löschen =====
 app.delete('/api/zettel', async function (req, res) {
   if (!req.benutzer) {
     return res.status(401).json({ fehler: 'Bitte zuerst anmelden.' });
   }
 
   try {
-    await pool.query('DELETE FROM zettel WHERE benutzer_id = $1', [req.benutzer.id]);
+    const aktuell = await wandPflegen();
+
+    await pool.query(
+      'DELETE FROM zettel WHERE benutzer_id = $1 AND wand_id = $2',
+      [req.benutzer.id, aktuell.id]
+    );
+
     alleBenachrichtigen();
     res.json({ ok: true });
+
   } catch (fehler) {
     console.error(fehler);
     res.status(500).json({ fehler: 'Datenbankfehler beim Löschen.' });
@@ -495,7 +655,16 @@ app.delete('/api/zettel', async function (req, res) {
 });
 
 
+// Stündlich prüfen, ob ein neuer Abschnitt begonnen hat
+setInterval(function () {
+  wandPflegen().catch(function (fehler) {
+    console.error('Wandpflege fehlgeschlagen:', fehler.message);
+  });
+}, 60 * 60 * 1000);
+
+
 datenbankVorbereiten()
+  .then(wandPflegen)
   .then(function () {
     app.listen(PORT, function () {
       console.log('Server läuft auf Port ' + PORT);

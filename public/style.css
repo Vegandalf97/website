@@ -9,13 +9,12 @@
 }
 
 body {
-  position: relative;        /* Bezugspunkt für den Anmeldebereich */
+  position: relative;
   font-family: Arial, sans-serif;
   background-color: #000000;
   margin: 0;
   padding: 15px;
 
-  /* Hintergrundbild auf ALLEN Seiten */
   background-image:
     linear-gradient(rgba(0, 0, 0, 0), rgba(244, 228, 193, 0)),
     url('/bilder/hintergrund.jpg');
@@ -33,11 +32,35 @@ body {
 }
 
 
+/* ===== Kopfreihe: Überschrift mittig, Wochen links ===== */
+.kopfreihe {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 10px 0 15px 0;
+}
+
+.kopfreihe h1 {
+  margin: 0;
+}
+
 h1 {
   text-align: center;
   color: #ffffff;
   font-size: clamp(1.5rem, 5vw, 2.5rem);
-  margin: 10px 0 20px 0;
+}
+
+
+/* ===== Statusmeldungen oben links ===== */
+#status {
+  position: absolute;
+  top: 12px;
+  left: 15px;
+  z-index: 100;
+  max-width: 45%;
+  font-size: 13px;
+  color: #ff9090;
 }
 
 
@@ -165,15 +188,69 @@ img {
 }
 
 
-/* ===== Hinweiszeile und Statusmeldungen ===== */
-#status {
+/* ============================================
+   WOCHENAUSWAHL - links neben der Überschrift
+   ============================================ */
+.waendeLeiste {
   position: absolute;
-  top: 12px;
-  left: 15px;
-  z-index: 100;
-  max-width: 45%;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+}
+
+.wandKnopf {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 8px 14px;
+  background-color: rgba(0, 0, 0, 0.45);
+  color: #cfcdc5;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 8px;
   font-size: 13px;
-  color: #ff9090;
+  cursor: pointer;
+}
+
+.wandKnopf:hover {
+  background-color: rgba(255, 255, 255, 0.15);
+}
+
+.wandKnopf.gewaehlt {
+  background-color: rgba(255, 255, 255, 0.22);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.6);
+}
+
+.wandTitel {
+  font-weight: bold;
+}
+
+.wandZeitraum {
+  font-size: 11px;
+  opacity: 0.75;
+}
+
+.wandKnopf.istAktuell .wandTitel::before {
+  content: '● ';
+  color: #4ade80;
+}
+
+@media (max-width: 700px) {
+  .kopfreihe {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .waendeLeiste {
+    position: static;
+    transform: none;
+    justify-content: center;
+  }
 }
 
 
@@ -182,7 +259,7 @@ input {
   padding: 10px;
   border: 1px solid #ffffff;
   border-radius: 6px;
-  font-size: 16px;      /* verhindert Zoom auf iPhones */
+  font-size: 16px;
 }
 
 button {
@@ -201,28 +278,72 @@ button:hover {
 
 
 /* ============================================
-   DIE WAND - die freie Fläche
+   DER RAHMEN - das Fenster auf die Wand
    ============================================ */
-.wand {
-  position: relative;              /* Bezugspunkt für die Notizen */
-  min-height: 70vh;
-  background-color: rgba(0, 0, 0, 0.089);
-  border: 2px dashed #c4a87800;
+.wandRahmen {
+  position: relative;
+  width: 100%;
+  height: 70vh;
+  overflow: hidden;
   border-radius: 10px;
-  overflow: hidden;                /* nichts ragt raus */
+  background-color: rgba(0, 0, 0, 0.10);
+  touch-action: none;
+}
+
+/* Diese Werte müssen zu WAND_BREITE / WAND_HOEHE passen! */
+.wand {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 2400px;
+  height: 1200px;
+  transform-origin: 0 0;
+  background-color: rgba(0, 0, 0, 0.18);
+}
+
+
+/* ===== Zoomknöpfe - immer unten rechts im Rahmen ===== */
+.zoomLeiste {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 50;
+  display: flex;
+  gap: 6px;
+}
+
+.zoomLeiste button {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  background-color: rgba(0, 0, 0, 0.55);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 8px;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.zoomLeiste button:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+
+.wandRahmen.nurLesen {
+  outline: 2px dashed rgba(255, 255, 255, 0.25);
+  outline-offset: -2px;
 }
 
 
 /* ============================================
    EINE NOTIZ
-   Kein Padding an der Notiz selbst - Name, x und
-   Text liegen absolut darin und bestimmen ihre
-   Abstände selbst. Diese Werte müssen zu den
-   Konstanten in pinnwand.js passen!
+   Die Abstände müssen zu den Konstanten
+   TEXT_OBEN / LINKS / RECHTS / UNTEN
+   in pinnwand.js passen!
    ============================================ */
 .notiz {
   position: absolute;
-  isolation: isolate;         /* eigener Stapelkontext */
+  isolation: isolate;
   padding: 0;
 
   background-color: #2b2b28;
@@ -234,8 +355,6 @@ button:hover {
   font-size: 15px;
   line-height: 1.45;
 
-  /* Die Größe steuert ausschließlich pinnwand.js.
-     Der Browser-Griff ist bewusst abgeschaltet. */
   resize: none;
   overflow: hidden;
 
@@ -267,52 +386,113 @@ button:hover {
 
 
 /* Kopfzeile: Name links, x rechts */
+/* Name oben links - größer und mit mehr Platz */
 .notiz small {
   position: absolute;
-  top: 9px;
-  left: 13px;
-  right: 34px;
+  top: 7px;
+  left: 14px;
+  right: 42px;           /* Platz für den Löschknopf */
   color: #8f8d85;
   font-style: italic;
-  font-size: 12px;
+  font-size: 16px;       /* war 12px */
 
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;    /* zu lange Namen enden mit ... */
+  text-overflow: ellipsis;
 }
 
 .loeschen {
   position: absolute;
-  top: 6px;
-  right: 8px;
+  top: 0;
+  right: 0;
   z-index: 2;
+  width: 38px;
+  height: 32px;
   padding: 0;
-  width: 22px;
-  height: 22px;
   background: none;
-  color: #7a7972;
-  font-size: 22px;
+  color: #8f8d85;
+  font-size: 23px;
   line-height: 1;
-  border-radius: 50%;
+
+  /* oben rechts derselbe Radius wie die Notiz,
+     unten links leicht abgerundet */
+  border-radius: 0 20px 0 14px;
 }
 
 .loeschen:hover {
-  background-color: #3d3d38;
+  background-color: rgba(255, 255, 255, 0.10);
   color: #ff8080;
 }
 
 
-/* Der Text - diese vier Werte entsprechen
-   TEXT_OBEN / TEXT_LINKS / TEXT_RECHTS / TEXT_UNTEN */
+/* Der Text: links und rechts gleicher Abstand,
+   damit Bilder mittig sitzen.
+   TEXT_OBEN 34 | LINKS 12 | RECHTS 12 | UNTEN 10 */
 .notiz p {
   position: absolute;
-  top: 30px;
+  top: 32px;
   left: 12px;
-  right: 5px;
-  bottom: 6px;
+  right: 12px;
+  bottom: 12px;
   margin: 0;
   overflow-y: auto;
   white-space: pre-wrap;
+}
+
+
+/* ===== Reine Befehlsbilder (/merz, /trump) =====
+   Kein Name, kein Löschknopf, kein Ziehgriff.
+   Rundum derselbe schmale Rand - muss zu
+   BILD_RAND in pinnwand.js passen! */
+/* Nur das Bild - kein Hintergrund, kein Rahmen, kein Schatten.
+   Der Rahmen bleibt als durchsichtige 1px-Linie stehen, damit
+   die Höhenrechnung in pinnwand.js weiter aufgeht. */
+.notiz.nurBild {
+  min-height: 40px;
+  background: none;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+/* Das Bild füllt die Notiz vollständig aus -
+   muss zu BILD_RAND = 0 in pinnwand.js passen */
+.notiz.nurBild p {
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overflow: hidden;
+}
+
+.notiz.nurBild .notizBild {
+  margin: 0;
+}
+
+.notiz.nurBild::after {
+  display: none;
+}
+
+
+/* ===== Bilder und Links in Notizen ===== */
+.notizBild {
+  display: block;
+  width: 100%;
+  height: auto;
+
+  /* Browser-eigenes Bildziehen abschalten */
+  -webkit-user-drag: none;
+  user-select: none;
+  margin: 4px 0 0 0;
+  border-radius: 8px;
+}
+
+.notizLink {
+  color: #7fc4ff;
+  word-break: break-all;
+}
+
+.notizLink:hover {
+  color: #a8d8ff;
 }
 
 
@@ -322,11 +502,11 @@ button:hover {
   position: absolute;
   right: 5px;
   bottom: 5px;
-  width: 15px;
-  height: 15px;
+  width: 18px;
+  height: 18px;
   border-right: 2px solid;
   border-bottom: 2px solid;
-  border-color: inherit;      /* Rahmenfarbe der Notiz */
+  border-color: inherit;
   border-bottom-right-radius: 20px;
   opacity: 0.7;
   cursor: ew-resize;
@@ -337,7 +517,6 @@ button:hover {
   opacity: 1;
 }
 
-/* Beim Schreiben kein Griff */
 .notiz.neu::after {
   display: none;
 }
@@ -393,14 +572,17 @@ button:hover {
   background-color: #2b2b28;
   border-color: #5a5952;
   cursor: default;
+  transition: width 0.12s ease, height 0.12s ease;
 }
 
+/* Exakt dieselben Abstände wie .notiz p -
+   dadurch springt beim Speichern nichts */
 .notiz.neu textarea {
   position: absolute;
-  top: 10px;
+  top: 32px;
   left: 12px;
-  right: 5px;
-  bottom: 8px;
+  right: 12px;
+  bottom: 12px;
   width: auto;
   height: auto;
   border: none;
@@ -439,7 +621,7 @@ button:hover {
     padding: 10px 22px;
   }
 
-  .wand {
-    min-height: 75vh;
+  .wandRahmen {
+    height: 80vh;
   }
 }
