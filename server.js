@@ -28,6 +28,10 @@ const MAX_X = 4000;
 const MAX_Y = 4000;
 const MAX_ZEICHEN = 500;
 
+// Höchstgröße einer Zeichnung in Zeichen Base64
+// (etwa 400 KB Bilddaten)
+const MAX_ZEICHNUNG = 550000;
+
 const MIN_BREITE = 150;
 const MAX_BREITE = 520;
 const MIN_HOEHE = 90;
@@ -50,7 +54,9 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false }
 });
 
-app.use(express.json());
+// Zeichnungen kommen als Base64 im Anfragekörper an.
+// Der Standardwert von 100 KB reicht dafür nicht.
+app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
 
 
@@ -162,6 +168,13 @@ async function datenbankVorbereiten() {
   await pool.query(`
     ALTER TABLE zettel
       ADD COLUMN IF NOT EXISTS wand_id UUID REFERENCES waende(id) ON DELETE CASCADE
+  `);
+
+  // Gemalte Zettel: das Bild als Base64-Text.
+  // Wird bewusst NICHT in der Notizliste mitgeschickt,
+  // sondern über eine eigene Adresse geladen.
+  await pool.query(`
+    ALTER TABLE zettel ADD COLUMN IF NOT EXISTS zeichnung TEXT
   `);
 
   console.log('Datenbank bereit.');
@@ -488,6 +501,7 @@ app.get('/api/zettel', async function (req, res) {
 
     const ergebnis = await pool.query(
       `SELECT id, name, nachricht, farbe, zeit, x, y, breite, hoehe, ebene,
+              (zeichnung IS NOT NULL) AS hat_zeichnung,
               (
                 $1::uuid IS NOT NULL
                 AND (benutzer_id IS NULL OR benutzer_id = $1::uuid)
@@ -508,6 +522,39 @@ app.get('/api/zettel', async function (req, res) {
 });
 
 
+// ===== Zeichnung eines Zettels ausliefern =====
+// Eigene Adresse, damit die Bilddaten nicht bei jeder
+// Aktualisierung der Wand mitgeschickt werden.
+app.get('/api/zettel/:id/zeichnung', async function (req, res) {
+  try {
+    const ergebnis = await pool.query(
+      'SELECT zeichnung FROM zettel WHERE id = $1',
+      [req.params.id]
+    );
+
+    const daten = ergebnis.rows[0] ? ergebnis.rows[0].zeichnung : null;
+
+    if (!daten) {
+      return res.status(404).json({ fehler: 'Keine Zeichnung.' });
+    }
+
+    // "data:image/png;base64," abschneiden und in Bytes wandeln
+    const bytes = Buffer.from(daten.split(',')[1], 'base64');
+
+    res.setHeader('Content-Type', 'image/png');
+
+    // Eine Zeichnung ändert sich nie - der Browser darf
+    // sie dauerhaft behalten.
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+
+    res.send(bytes);
+
+  } catch (fehler) {
+    res.status(400).json({ fehler: 'Ungültige ID.' });
+  }
+});
+
+
 app.post('/api/zettel', async function (req, res) {
   const nachricht = String(req.body.nachricht || '').trim();
 
@@ -518,6 +565,23 @@ app.post('/api/zettel', async function (req, res) {
     return res.status(400).json({
       fehler: 'Text ist zu lang (max. ' + MAX_ZEICHEN + ' Zeichen).'
     });
+  }
+
+  // ===== Zeichnung, falls eine mitkommt =====
+  let zeichnung = null;
+
+  if (req.body.zeichnung) {
+    const roh = String(req.body.zeichnung);
+
+    // Nur PNG als Datenadresse, nichts anderes
+    if (!/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(roh)) {
+      return res.status(400).json({ fehler: 'Ungültige Zeichnung.' });
+    }
+    if (roh.length > MAX_ZEICHNUNG) {
+      return res.status(400).json({ fehler: 'Die Zeichnung ist zu groß.' });
+    }
+
+    zeichnung = roh;
   }
 
   const name = req.benutzer ? req.benutzer.benutzername : 'Anonym';
@@ -534,20 +598,31 @@ app.post('/api/zettel', async function (req, res) {
 
     const ergebnis = await pool.query(
       `INSERT INTO zettel
-         (name, nachricht, farbe, x, y, breite, hoehe, ebene, benutzer_id, wand_id)
+         (name, nachricht, farbe, x, y, breite, hoehe, ebene,
+          benutzer_id, wand_id, zeichnung)
        VALUES (
          $1, $2, $3,
          COALESCE($4, 20),
          COALESCE($5, 20),
-         LEAST(COALESCE($6, 190), $8 + length($2) * $10),
-         LEAST(COALESCE($7, 130), $9 + length($2) * $11),
+
+         -- Bei Text begrenzt die Textlänge die Größe.
+         -- Zeichnungen haben keinen Text, daher ohne Begrenzung.
+         CASE WHEN $14::text IS NULL
+              THEN LEAST(COALESCE($6, 190), $8 + length($2) * $10)
+              ELSE COALESCE($6, 190)
+         END,
+         CASE WHEN $14::text IS NULL
+              THEN LEAST(COALESCE($7, 130), $9 + length($2) * $11)
+              ELSE COALESCE($7, 130)
+         END,
          (SELECT COALESCE(MAX(ebene), 0) + 1 FROM zettel WHERE wand_id = $13),
-         $12, $13
+         $12, $13, $14
        )
-       RETURNING *`,
+       RETURNING id, name, nachricht, farbe, zeit, x, y, breite, hoehe, ebene,
+                 (zeichnung IS NOT NULL) AS hat_zeichnung`,
       [name, nachricht, farbe, x, y, breite, hoehe,
        GUARD_BREITE, GUARD_HOEHE, BREITE_PRO_ZEICHEN, HOEHE_PRO_ZEICHEN,
-       besitzer, aktuell.id]
+       besitzer, aktuell.id, zeichnung]
     );
 
     alleBenachrichtigen();

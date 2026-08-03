@@ -540,6 +540,41 @@ function istNurBefehl(nachricht) {
 }
 
 
+// Zeigt eine gemalte Notiz an. Die Bilddaten kommen
+// über eine eigene Adresse, nicht mit der Notizliste.
+function zeichnungAnzeigen(absatz, eintrag, notiz) {
+  const adresse = '/api/zettel/' + eintrag.id + '/zeichnung';
+
+  const bild = document.createElement('img');
+  bild.className = 'notizBild';
+  bild.src = adresse;
+  bild.alt = 'Gemalte Notiz';
+  bild.draggable = false;
+
+  const mass = bildMasse.get(adresse);
+
+  if (mass) {
+    bild.style.aspectRatio = mass.breite + ' / ' + mass.hoehe;
+  }
+
+  bild.addEventListener('load', function () {
+    if (bild.naturalWidth && bild.naturalHeight) {
+      bildMasse.set(adresse, {
+        breite: bild.naturalWidth,
+        hoehe: bild.naturalHeight
+      });
+
+      bild.style.aspectRatio =
+        bild.naturalWidth + ' / ' + bild.naturalHeight;
+    }
+
+    hoeheAnpassen(notiz, absatz);
+  });
+
+  absatz.appendChild(bild);
+}
+
+
 function linkBauen(adresse) {
   const link = document.createElement('a');
   link.className = 'notizLink';
@@ -791,13 +826,22 @@ function nachholenPruefen() {
 }
 
 
-async function notizSpeichern(text, x, y) {
+// zeichnung ist eine PNG-Datenadresse oder null
+async function notizSpeichern(text, x, y, zeichnung, breiteVor, hoeheVor) {
   const groesse = groesseFuerText(text);
 
   // Bilder brauchen von Anfang an mehr Platz
-  const breite = hatBild(text)
+  let breite = hatBild(text)
     ? Math.max(groesse.breite, BILD_MIN_BREITE)
     : groesse.breite;
+
+  let hoehe = groesse.hoehe;
+
+  // Bei einer Zeichnung gibt die Leinwand die Größe vor
+  if (zeichnung) {
+    breite = breiteVor;
+    hoehe = hoeheVor;
+  }
 
   try {
     const antwort = await fetch('/api/zettel', {
@@ -808,7 +852,8 @@ async function notizSpeichern(text, x, y) {
         x: x,
         y: y,
         breite: breite,
-        hoehe: groesse.hoehe
+        hoehe: hoehe,
+        zeichnung: zeichnung || null
       })
     });
 
@@ -911,8 +956,11 @@ function anzeigen() {
   notizen.forEach(function (eintrag, nummer) {
 
     const auto = groesseFuerText(eintrag.nachricht);
-    const mitBild = hatBild(eintrag.nachricht);
-    const nurBild = istNurBefehl(eintrag.nachricht);
+
+    // Gemalte Zettel verhalten sich wie Befehlsbilder:
+    // nur das Bild, kein Name, kein Löschknopf
+    const mitBild = hatBild(eintrag.nachricht) || eintrag.hat_zeichnung;
+    const nurBild = istNurBefehl(eintrag.nachricht) || eintrag.hat_zeichnung;
 
     // Bildnotizen dürfen bis zur vollen Breite gezogen werden.
     // Reine Befehlsbilder behalten ihre Größe.
@@ -932,7 +980,12 @@ function anzeigen() {
     obersteEbene = Math.max(obersteEbene, 10 + nummer);
 
     const text = document.createElement('p');
-    inhaltAufbauen(text, eintrag.nachricht, notiz);
+
+    if (eintrag.hat_zeichnung) {
+      zeichnungAnzeigen(text, eintrag, notiz);
+    } else {
+      inhaltAufbauen(text, eintrag.nachricht, notiz);
+    }
 
     // Reine Befehlsbilder: kein Name, kein Löschknopf.
     // Gelöscht wird dort per Doppelklick.
@@ -1156,6 +1209,81 @@ function ziehenAktivieren(element, eintrag) {
 //  Neue Notiz anlegen
 // ============================================
 
+// ============================================
+//  Malmodus - wird durch /paint gestartet
+// ============================================
+function malmodusStarten(notiz, x, y) {
+  notiz.classList.add('malen');
+
+  // Die Notiz richtet sich nach der Leinwand
+  notiz.style.width = 'auto';
+  notiz.style.height = 'auto';
+
+  const flaeche = malflaecheBauen();
+  notiz.appendChild(flaeche.element);
+
+  const reihe = document.createElement('div');
+  reihe.className = 'malAbschluss';
+
+  const fertigKnopf = document.createElement('button');
+  fertigKnopf.type = 'button';
+  fertigKnopf.className = 'malKnopf malHaupt';
+  fertigKnopf.textContent = 'Anpinnen';
+
+  const abbrechen = document.createElement('button');
+  abbrechen.type = 'button';
+  abbrechen.className = 'malKnopf';
+  abbrechen.textContent = 'Abbrechen';
+
+  reihe.appendChild(fertigKnopf);
+  reihe.appendChild(abbrechen);
+  notiz.appendChild(reihe);
+
+  let erledigt = false;
+
+
+  async function speichern() {
+    if (erledigt) {
+      return;
+    }
+    erledigt = true;
+
+    const png = flaeche.alsPng();
+
+    notiz.remove();
+    schreibtGerade = false;
+
+    // Zwei Pixel für den Rahmen dazu
+    await notizSpeichern('/paint', x, y, png,
+                         flaeche.breite + 2, flaeche.hoehe + 2);
+    await waendeLaden();
+  }
+
+
+  async function verwerfen() {
+    if (erledigt) {
+      return;
+    }
+    erledigt = true;
+
+    notiz.remove();
+    schreibtGerade = false;
+    await notizenHolen();
+  }
+
+
+  fertigKnopf.addEventListener('click', function (event) {
+    event.stopPropagation();
+    speichern();
+  });
+
+  abbrechen.addEventListener('click', function (event) {
+    event.stopPropagation();
+    verwerfen();
+  });
+}
+
+
 function notizfeldOeffnen(x, y) {
   schreibtGerade = true;
 
@@ -1216,6 +1344,16 @@ function notizfeldOeffnen(x, y) {
     schonFertig = true;
 
     const text = feld.value.trim();
+
+    // Befehl /paint: statt zu speichern die Malfläche öffnen.
+    // schonFertig bleibt true, damit der Textweg nicht
+    // noch einmal anspringt.
+    if (text.toLowerCase() === '/paint') {
+      feld.remove();
+      malmodusStarten(notiz, x, y);
+      return;
+    }
+
     notiz.remove();
     schreibtGerade = false;
 

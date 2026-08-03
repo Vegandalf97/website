@@ -598,6 +598,109 @@ button:hover {
 }
 
 
+/* ============================================
+   MALFLÄCHE (Befehl /paint)
+   ============================================ */
+.notiz.malen {
+  padding: 8px;
+  max-width: none;
+  max-height: none;
+  cursor: default;
+}
+
+.notiz.malen::after {
+  display: none;
+}
+
+.malKasten {
+  display: block;
+}
+
+.malLeinwand {
+  display: block;
+  background-color: #ffffff;
+  border-radius: 6px;
+  cursor: crosshair;
+  touch-action: none;      /* Finger malt, scrollt nicht */
+}
+
+.malWerkzeuge {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.malFarbe {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.malFarbe.gewaehlt {
+  border-color: #ffffff;
+  transform: scale(1.15);
+}
+
+.malStaerke {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 24px;
+  padding: 0;
+  background-color: #3a3a37;
+  border: 1px solid #5a5952;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.malStaerke span {
+  display: block;
+  background-color: #edebe4;
+  border-radius: 50%;
+}
+
+.malStaerke.gewaehlt {
+  background-color: #5a5952;
+  border-color: #edebe4;
+}
+
+.malKnopf {
+  padding: 5px 12px;
+  background-color: #3a3a37;
+  color: #edebe4;
+  border: 1px solid #5a5952;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.malKnopf:hover {
+  background-color: #4a4a45;
+}
+
+.malHaupt {
+  background-color: #2f6fd0;
+  border-color: #2f6fd0;
+  color: #ffffff;
+}
+
+.malHaupt:hover {
+  background-color: #4585e8;
+}
+
+.malAbschluss {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+
 /* ===== Touch-Geräte: größere Bedienflächen =====
    pointer: coarse trifft Finger, nicht Mauszeiger */
 @media (pointer: coarse) {
