@@ -308,7 +308,17 @@ button:hover {
 .wandRahmen {
   position: relative;
   width: 100%;
-  height: 70vh;
+
+  /* Der Rahmen bekommt das Seitenverhältnis der Wand.
+     Dadurch ist auf breiten Bildschirmen die ganze Wand
+     zu sehen - notfalls scrollt die Seite.
+     Muss zu WAND_BREITE / WAND_HOEHE passen! */
+  aspect-ratio: 2400 / 1200;
+
+  /* Auf schmalen Geräten wäre 2:1 nur ein flacher Streifen,
+     deshalb eine Mindesthöhe. */
+  min-height: 70vh;
+
   overflow: hidden;
   border-radius: 10px;
   background-color: rgba(0, 0, 0, 0.10);
@@ -417,9 +427,10 @@ button:hover {
   top: 7px;
   left: 14px;
   right: 42px;           /* Platz für den Löschknopf */
-  color: #8f8d85;
-  font-style: italic;
-  font-size: 16px;       /* war 12px */
+  color: #e2dfd6;        /* deutlich heller als vorher */
+  font-style: normal;    /* nicht mehr schräg */
+  font-weight: bold;
+  font-size: 16px;
 
   white-space: nowrap;
   overflow: hidden;
@@ -691,6 +702,6 @@ button:hover {
   }
 
   .wandRahmen {
-    height: 80vh;
+    min-height: 80vh;
   }
 }

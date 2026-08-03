@@ -150,14 +150,19 @@ function ansichtAnwenden() {
   const sichtbareBreite = WAND_BREITE * skala;
   const sichtbareHoehe = WAND_HOEHE * skala;
 
-  if (sichtbareBreite <= rahmen.clientWidth) {
-    versatzX = (rahmen.clientWidth - sichtbareBreite) / 2;
+  // Ragt die Wand nur um ein paar Pixel über den Rahmen
+  // hinaus, wird sie mittig festgesetzt. Sonst ließe sie
+  // sich um diesen Rest hin und her zappeln.
+  const RUHE = 4;
+
+  if (sichtbareBreite - rahmen.clientWidth <= RUHE) {
+    versatzX = Math.round((rahmen.clientWidth - sichtbareBreite) / 2);
   } else {
     versatzX = begrenzen(versatzX, rahmen.clientWidth - sichtbareBreite, 0);
   }
 
-  if (sichtbareHoehe <= rahmen.clientHeight) {
-    versatzY = (rahmen.clientHeight - sichtbareHoehe) / 2;
+  if (sichtbareHoehe - rahmen.clientHeight <= RUHE) {
+    versatzY = Math.round((rahmen.clientHeight - sichtbareHoehe) / 2);
   } else {
     versatzY = begrenzen(versatzY, rahmen.clientHeight - sichtbareHoehe, 0);
   }
