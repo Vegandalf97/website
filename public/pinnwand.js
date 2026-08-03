@@ -169,6 +169,17 @@ function ansichtAnwenden() {
 
   wand.style.transform =
     'translate(' + versatzX + 'px, ' + versatzY + 'px) scale(' + skala + ')';
+
+  // Passt die Wand ganz in den Rahmen, gibt es nichts zu
+  // verschieben - dann soll der Finger auf der freien Fläche
+  // wieder die Seite scrollen. "pan-y" überlässt dem Browser
+  // nur das senkrechte Scrollen; das Zoomen mit zwei Fingern
+  // bleibt bei uns.
+  const kannSchieben =
+    (sichtbareBreite - rahmen.clientWidth > RUHE) ||
+    (sichtbareHoehe - rahmen.clientHeight > RUHE);
+
+  rahmen.style.touchAction = kannSchieben ? 'none' : 'pan-y';
 }
 
 

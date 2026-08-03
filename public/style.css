@@ -146,6 +146,29 @@ h1 {
 }
 
 
+/* ============================================
+   KOPFLEISTE - bleibt beim Scrollen oben stehen
+   ============================================ */
+.kopfleiste {
+  position: sticky;        /* Bezugspunkt für Status und Anmeldung */
+  top: 0;
+  z-index: 200;
+
+  /* Den seitlichen Innenabstand des body ausgleichen,
+     damit die Leiste bis an den Rand reicht */
+  margin: -15px -15px 20px -15px;
+  padding: 10px 15px 0 15px;
+
+  background-color: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(6px);
+}
+
+/* Der untere Abstand kommt jetzt von der Leiste selbst */
+.kopfleiste .navi {
+  margin-bottom: 0;
+}
+
+
 /* ===== Navigation ===== */
 .navi {
   display: flex;
@@ -699,6 +722,12 @@ button:hover {
 
   .navi a {
     padding: 10px 22px;
+  }
+
+  /* body hat hier 30px Innenabstand - Leiste entsprechend */
+  .kopfleiste {
+    margin: -30px -30px 20px -30px;
+    padding: 12px 30px 0 30px;
   }
 
   .wandRahmen {
