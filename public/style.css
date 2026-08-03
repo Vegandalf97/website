@@ -575,7 +575,7 @@ button:hover {
     height: 18px;
     border-right-width: 3px;
     border-bottom-width: 3px;
-    border-bottom-right-radius: 9px;
+    border-bottom-right-radius: 20px;
     opacity: 0.9;
   }
 
