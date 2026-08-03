@@ -241,15 +241,40 @@ img {
 }
 
 @media (max-width: 700px) {
+
+  /* Auf schmalen Bildschirmen alles untereinander,
+     sonst überlappen Anmeldung und Navigation */
+  #status,
+  .konto {
+    position: static;
+    max-width: none;
+    z-index: auto;
+  }
+
+  .konto {
+    justify-content: flex-end;
+    margin-bottom: 10px;
+  }
+
+  #status {
+    text-align: left;
+  }
+
   .kopfreihe {
     flex-direction: column;
+    align-items: flex-start;      /* Zeitangabe nach links */
     gap: 10px;
+  }
+
+  .kopfreihe h1 {
+    width: 100%;
+    text-align: center;
   }
 
   .waendeLeiste {
     position: static;
     transform: none;
-    justify-content: center;
+    justify-content: flex-start;
   }
 }
 
@@ -440,6 +465,22 @@ button:hover {
 }
 
 
+/* touch-action wird NICHT an Kindelemente vererbt.
+   Ohne diese Regel scrollt eine senkrechte Fingerbewegung
+   auf Text oder Bild die Seite - und bricht dabei das
+   Ziehen der Notiz ab. */
+.notiz p,
+.notiz small,
+.notiz .loeschen {
+  touch-action: none;
+}
+
+/* Beim Tippen soll das Eingabefeld sich normal verhalten */
+.notiz.neu textarea {
+  touch-action: auto;
+}
+
+
 /* ===== Reine Befehlsbilder (/merz, /trump) =====
    Kein Name, kein Löschknopf, kein Ziehgriff.
    Rundum derselbe schmale Rand - muss zu
@@ -482,6 +523,7 @@ button:hover {
   /* Browser-eigenes Bildziehen abschalten */
   -webkit-user-drag: none;
   user-select: none;
+  touch-action: none;
   margin: 4px 0 0 0;
   border-radius: 8px;
 }
