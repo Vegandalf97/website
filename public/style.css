@@ -571,11 +571,11 @@ button:hover {
   .notiz::after {
     right: 6px;
     bottom: 6px;
-    width: 26px;
-    height: 26px;
+    width: 18px;
+    height: 18px;
     border-right-width: 3px;
     border-bottom-width: 3px;
-    border-bottom-right-radius: 10px;
+    border-bottom-right-radius: 9px;
     opacity: 0.9;
   }
 

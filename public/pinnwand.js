@@ -996,8 +996,17 @@ function ziehenAktivieren(element, eintrag) {
     // Die Griffzone in Bildschirmpixeln. Bei kleinem Zoom
     // wäre GRIFF_ZONE * skala nur eine Handvoll Pixel -
     // mit dem Finger nicht zu treffen. Deshalb ein Mindestmaß.
-    const mindestZone = event.pointerType === 'mouse' ? 24 : 44;
-    const zone = Math.max(GRIFF_ZONE * skala, mindestZone);
+    const mindestZone = event.pointerType === 'mouse' ? 24 : 40;
+
+    // ... aber nie mehr als ein Viertel der Notiz, sonst
+    // erwischt man bei kleinen Zetteln immer die Ecke
+    // statt sie verschieben zu können.
+    const obergrenze = Math.min(kasten.width, kasten.height) * 0.25;
+
+    const zone = Math.min(
+      Math.max(GRIFF_ZONE * skala, mindestZone),
+      obergrenze
+    );
 
     const inEcke = !eintrag.nurBild &&
                    event.clientX > kasten.right - zone &&
