@@ -33,9 +33,14 @@ const MAX_ZEICHEN = 500;
 const MAX_ZEICHNUNG = 550000;
 
 const MIN_BREITE = 150;
-const MAX_BREITE = 520;
 const MIN_HOEHE = 90;
-const MAX_HOEHE = 460;
+
+// Obergrenzen. Für Textnotizen begrenzt zusätzlich die
+// Textlänge (GUARD_*), gemalte Zettel dürfen bis hier hoch.
+// Muss zu BILD_MAX_BREITE / BILD_MAX_HOEHE in pinnwand.js
+// und zu .notiz.mitZeichnung in style.css passen.
+const MAX_BREITE = 700;
+const MAX_HOEHE = 700;
 
 const GUARD_BREITE = 300;
 const GUARD_HOEHE = 200;
@@ -83,10 +88,20 @@ app.get('/api/ereignisse', function (req, res) {
 });
 
 
-function alleBenachrichtigen() {
+// Schickt ein Ereignis an alle offenen Browser.
+// Der Inhalt ist JSON, damit verschiedene Arten von
+// Meldungen unterscheidbar sind.
+function ereignisSenden(inhalt) {
+  const zeile = 'data: ' + JSON.stringify(inhalt) + '\n\n';
+
   klienten.forEach(function (res) {
-    res.write('data: aktualisiert\n\n');
+    res.write(zeile);
   });
+}
+
+
+function alleBenachrichtigen() {
+  ereignisSenden({ typ: 'aktualisiert' });
 }
 
 
@@ -635,6 +650,31 @@ app.post('/api/zettel', async function (req, res) {
 });
 
 
+// ===== Live-Bewegung während des Ziehens =====
+// Wird viele Male pro Sekunde aufgerufen und schreibt
+// deshalb NICHT in die Datenbank - nur weitersagen.
+// Gespeichert wird erst beim Loslassen über /layout.
+app.post('/api/zettel/:id/bewegt', function (req, res) {
+  const x = zahlOderNull(req.body.x, 0, MAX_X);
+  const y = zahlOderNull(req.body.y, 0, MAX_Y);
+  const breite = zahlOderNull(req.body.breite, MIN_BREITE, MAX_BREITE);
+  const hoehe = zahlOderNull(req.body.hoehe, MIN_HOEHE, MAX_HOEHE);
+
+  ereignisSenden({
+    typ: 'bewegt',
+    id: req.params.id,
+    x: x,
+    y: y,
+    breite: breite,
+    hoehe: hoehe,
+    sender: String(req.body.sender || '')
+  });
+
+  // 204 = alles gut, nichts zurückzugeben
+  res.status(204).end();
+});
+
+
 app.patch('/api/zettel/:id/layout', async function (req, res) {
   const x = zahlOderNull(req.body.x, 0, MAX_X);
   const y = zahlOderNull(req.body.y, 0, MAX_Y);
@@ -656,8 +696,16 @@ app.patch('/api/zettel/:id/layout', async function (req, res) {
       `UPDATE zettel SET
          x = COALESCE($1, x),
          y = COALESCE($2, y),
-         breite = LEAST(COALESCE($3, breite), $6 + length(nachricht) * $8),
-         hoehe  = LEAST(COALESCE($4, hoehe),  $7 + length(nachricht) * $9),
+         -- Die Textlänge begrenzt die Größe nur bei Textnotizen.
+         -- Zeichnungen haben kaum Text und dürfen frei wachsen.
+         breite = CASE WHEN zeichnung IS NULL
+                       THEN LEAST(COALESCE($3, breite), $6 + length(nachricht) * $8)
+                       ELSE COALESCE($3, breite)
+                  END,
+         hoehe  = CASE WHEN zeichnung IS NULL
+                       THEN LEAST(COALESCE($4, hoehe), $7 + length(nachricht) * $9)
+                       ELSE COALESCE($4, hoehe)
+                  END,
          ebene = (SELECT COALESCE(MAX(ebene), 0) + 1 FROM zettel WHERE wand_id = $10)
        WHERE id = $5
        RETURNING id, x, y, breite, hoehe, ebene`,

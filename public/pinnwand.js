@@ -29,9 +29,22 @@ const MAX_HOEHE = 460;
 // Notizen mit Bild dürfen breiter und höher werden
 const BILD_MIN_BREITE = 320;
 
+// Eigene, großzügigere Grenzen für gemalte Zettel.
+// Müssen zu .notiz in style.css und zu server.js passen.
+const BILD_MAX_BREITE = 700;
+const BILD_MAX_HOEHE = 700;
+
 // Reine Befehlsbilder: schmaler Rand rundum, kein Name,
 // kein Löschknopf, keine Größenänderung
 const BILD_RAND = 0;
+
+// Höhe der Knopfzeile beim Schreiben einer neuen Notiz.
+// Muss zu .notizAbschluss in style.css passen.
+const KNOPF_ZEILE = 40;
+
+// So breit muss eine Notiz beim Schreiben mindestens sein,
+// damit "Anpinnen" und "Abbrechen" nebeneinander passen
+const NEU_MIN_BREITE = 215;
 const BILD_MIN_HOEHE = 40;
 
 const MAX_SKALA = 2;
@@ -75,6 +88,17 @@ const groessenSpeicher = new Map();
 
 // Gemerkte Seitenverhältnisse der Bilder (Adresse -> Maße)
 const bildMasse = new Map();
+
+// Zuordnung Notiz-Kennung -> Element, damit fremde
+// Bewegungen gezielt zugestellt werden können
+const notizElemente = new Map();
+
+// Zufällige Kennung dieses Browsers. Damit erkennen wir
+// unsere eigenen Meldungen und ignorieren sie.
+const KLIENT_ID = Math.random().toString(36).slice(2);
+
+// Wie oft die eigene Bewegung gemeldet wird
+const MELDE_ABSTAND = 70;   // Millisekunden
 
 let messNotiz = null;
 let messAbsatz = null;
@@ -540,6 +564,28 @@ function istNurBefehl(nachricht) {
 }
 
 
+// Wie breit darf eine Notiz mit diesem Bild höchstens sein,
+// damit das Bild noch vollständig in die erlaubte Höhe passt?
+// Sonst würde es abgeschnitten und der Text bekäme eine
+// Bildlaufleiste.
+function maxBreiteFuerBild(bildBreite, bildHoehe) {
+  if (!bildBreite || !bildHoehe) {
+    return BILD_MAX_BREITE;
+  }
+
+  // Zwei Pixel Abstand zur Obergrenze, damit die Höhe
+  // nie genau anschlägt und eine Leiste erzeugt
+  const innenHoehe =
+    BILD_MAX_HOEHE - 2 * RAHMEN - TEXT_OBEN - TEXT_UNTEN - SICHERHEIT - 2;
+
+  const innenBreite = innenHoehe * (bildBreite / bildHoehe);
+
+  const passend = Math.floor(innenBreite) + 2 * RAHMEN + TEXT_LINKS + TEXT_RECHTS;
+
+  return begrenzen(passend, MIN_BREITE, BILD_MAX_BREITE);
+}
+
+
 // Zeigt eine gemalte Notiz an. Die Bilddaten kommen
 // über eine eigene Adresse, nicht mit der Notizliste.
 function zeichnungAnzeigen(absatz, eintrag, notiz) {
@@ -566,6 +612,14 @@ function zeichnungAnzeigen(absatz, eintrag, notiz) {
 
       bild.style.aspectRatio =
         bild.naturalWidth + ' / ' + bild.naturalHeight;
+
+      // Jetzt ist das Seitenverhältnis bekannt - damit steht
+      // fest, wie breit die Notiz höchstens werden darf
+      eintrag.maxBreite = maxBreiteFuerBild(bild.naturalWidth, bild.naturalHeight);
+
+      if (notiz.offsetWidth > eintrag.maxBreite) {
+        notiz.style.width = eintrag.maxBreite + 'px';
+      }
     }
 
     hoeheAnpassen(notiz, absatz);
@@ -621,12 +675,20 @@ function hoeheAnpassen(notiz, inhalt) {
   const oben = nurBild ? BILD_RAND : TEXT_OBEN;
   const unten = nurBild ? BILD_RAND : TEXT_UNTEN;
 
+  // Beim Schreiben braucht es unten Platz für die Knöpfe
+  const knopfzeile = notiz.classList.contains('neu') ? KNOPF_ZEILE : 0;
+
   const noetig = inhaltHoehe(inhalt)
-               + 2 * RAHMEN + oben + unten + SICHERHEIT;
+               + 2 * RAHMEN + oben + unten + SICHERHEIT + knopfzeile;
 
   const kleinste = nurBild ? BILD_MIN_HOEHE : MIN_HOEHE;
 
-  notiz.style.height = begrenzen(Math.ceil(noetig), kleinste, MAX_HOEHE) + 'px';
+  // Gemalte Zettel dürfen höher werden als Textzettel
+  const groesste = notiz.classList.contains('mitZeichnung')
+    ? BILD_MAX_HOEHE
+    : MAX_HOEHE;
+
+  notiz.style.height = begrenzen(Math.ceil(noetig), kleinste, groesste) + 'px';
 }
 
 
@@ -927,6 +989,61 @@ async function layoutSpeichern(eintrag, element) {
 }
 
 
+// Meldet die eigene Bewegung, ohne sie zu speichern.
+// Absichtlich ohne await - das darf ruhig unterwegs sein.
+function bewegungMelden(id, x, y, breite, hoehe) {
+  fetch('/api/zettel/' + id + '/bewegt', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      x: Math.round(x),
+      y: Math.round(y),
+      breite: breite ? Math.round(breite) : null,
+      hoehe: hoehe ? Math.round(hoehe) : null,
+      sender: KLIENT_ID
+    })
+  }).catch(function () {
+    // Eine verlorene Zwischenmeldung ist unkritisch -
+    // beim Loslassen wird ohnehin richtig gespeichert
+  });
+}
+
+
+// Wendet die Bewegung eines anderen Geräts an
+function fremdeBewegung(daten) {
+  const element = notizElemente.get(daten.id);
+
+  if (!element) {
+    return;
+  }
+
+  if (daten.x !== null) {
+    element.style.left = daten.x + 'px';
+  }
+  if (daten.y !== null) {
+    element.style.top = daten.y + 'px';
+  }
+  if (daten.breite) {
+    element.style.width = daten.breite + 'px';
+  }
+  if (daten.hoehe) {
+    element.style.height = daten.hoehe + 'px';
+  }
+
+  // Auch die gemerkten Daten mitziehen, damit ein
+  // späteres Neuzeichnen nicht zurückspringt
+  const eintrag = notizen.find(function (n) {
+    return n.id === daten.id;
+  });
+
+  if (eintrag) {
+    if (daten.x !== null) { eintrag.x = daten.x; }
+    if (daten.y !== null) { eintrag.y = daten.y; }
+    if (daten.breite) { eintrag.breite = daten.breite; }
+  }
+}
+
+
 async function notizLoeschen(id) {
   try {
     const antwort = await fetch('/api/zettel/' + id, { method: 'DELETE' });
@@ -952,24 +1069,36 @@ async function notizLoeschen(id) {
 
 function anzeigen() {
   wand.innerHTML = '';
+  notizElemente.clear();
 
   notizen.forEach(function (eintrag, nummer) {
 
     const auto = groesseFuerText(eintrag.nachricht);
 
-    // Gemalte Zettel verhalten sich wie Befehlsbilder:
-    // nur das Bild, kein Name, kein Löschknopf
+    // Gemalte Zettel sind ganz normale Zettel: mit
+    // Hintergrund, Namen und Löschknopf.
     const mitBild = hatBild(eintrag.nachricht) || eintrag.hat_zeichnung;
-    const nurBild = istNurBefehl(eintrag.nachricht) || eintrag.hat_zeichnung;
+    const nurBild = istNurBefehl(eintrag.nachricht);
 
     // Bildnotizen dürfen bis zur vollen Breite gezogen werden.
-    // Reine Befehlsbilder behalten ihre Größe.
-    const maxBreite = mitBild ? MAX_BREITE : auto.maxBreite;
+    let maxBreite = mitBild ? MAX_BREITE : auto.maxBreite;
+
+    // Bei Zeichnungen begrenzt zusätzlich das Seitenverhältnis,
+    // sobald es bekannt ist - sonst wird das Bild abgeschnitten
+    if (eintrag.hat_zeichnung) {
+      const mass = bildMasse.get('/api/zettel/' + eintrag.id + '/zeichnung');
+
+      if (mass) {
+        maxBreite = maxBreiteFuerBild(mass.breite, mass.hoehe);
+      }
+    }
 
     const breite = begrenzen(eintrag.breite, MIN_BREITE, maxBreite);
 
     const notiz = document.createElement('div');
-    notiz.className = 'notiz ' + eintrag.farbe + (nurBild ? ' nurBild' : '');
+    notiz.className = 'notiz ' + eintrag.farbe
+      + (nurBild ? ' nurBild' : '')
+      + (eintrag.hat_zeichnung ? ' mitZeichnung' : '');
 
     notiz.style.left = begrenzen(eintrag.x, 0, WAND_BREITE - breite) + 'px';
     notiz.style.top = begrenzen(eintrag.y, 0, WAND_HOEHE - MIN_HOEHE) + 'px';
@@ -1014,6 +1143,7 @@ function anzeigen() {
     notiz.appendChild(text);
 
     wand.appendChild(notiz);
+    notizElemente.set(eintrag.id, notiz);
 
     // Höhe exakt auf den Inhalt setzen (wächst und schrumpft)
     hoeheAnpassen(notiz, text);
@@ -1089,6 +1219,7 @@ function ziehenAktivieren(element, eintrag) {
     if (inEcke) {
       const startX = event.clientX;
       const startBreite = element.offsetWidth;
+      let letzteBreitenMeldung = 0;
 
       function breiteBewegen(bewegEvent) {
         if (zoomGeste) {
@@ -1105,6 +1236,14 @@ function ziehenAktivieren(element, eintrag) {
 
         // Höhe folgt dem Inhalt - bei Bildern und bei Text
         hoeheAnpassen(element, eintrag.absatz);
+
+        const jetzt = Date.now();
+
+        if (jetzt - letzteBreitenMeldung > MELDE_ABSTAND) {
+          letzteBreitenMeldung = jetzt;
+          bewegungMelden(eintrag.id, eintrag.x, eintrag.y,
+                         neueBreite, element.offsetHeight);
+        }
       }
 
       function breiteFertig() {
@@ -1137,6 +1276,7 @@ function ziehenAktivieren(element, eintrag) {
 
     let letzteX = eintrag.x;
     let letzteY = eintrag.y;
+    let letzteMeldung = 0;
 
 
     function bewegen(bewegEvent) {
@@ -1160,6 +1300,15 @@ function ziehenAktivieren(element, eintrag) {
 
       letzteX = neuX;
       letzteY = neuY;
+
+      // Andere Geräte mitziehen lassen - aber gedrosselt,
+      // sonst entstehen dutzende Anfragen pro Sekunde
+      const jetzt = Date.now();
+
+      if (jetzt - letzteMeldung > MELDE_ABSTAND) {
+        letzteMeldung = jetzt;
+        bewegungMelden(eintrag.id, neuX, neuY, null, null);
+      }
     }
 
 
@@ -1215,6 +1364,15 @@ function ziehenAktivieren(element, eintrag) {
 function malmodusStarten(notiz, x, y) {
   notiz.classList.add('malen');
 
+  // Die Knopfzeile aus dem Textmodus muss weg - ihre
+  // Knöpfe gehören zu einer Funktion, die schon
+  // abgeschlossen ist und nichts mehr tun würde.
+  const alteKnoepfe = notiz.querySelector('.notizAbschluss');
+
+  if (alteKnoepfe) {
+    alteKnoepfe.remove();
+  }
+
   // Die Notiz richtet sich nach der Leinwand
   notiz.style.width = 'auto';
   notiz.style.height = 'auto';
@@ -1253,9 +1411,10 @@ function malmodusStarten(notiz, x, y) {
     notiz.remove();
     schreibtGerade = false;
 
-    // Zwei Pixel für den Rahmen dazu
-    await notizSpeichern('/paint', x, y, png,
-                         flaeche.breite + 2, flaeche.hoehe + 2);
+    // Rahmen plus die seitlichen Abstände des Zettels
+    await notizSpeichern('gemalt', x, y, png,
+                         flaeche.breite + 2 * RAHMEN + TEXT_LINKS + TEXT_RECHTS,
+                         flaeche.hoehe);
     await waendeLaden();
   }
 
@@ -1318,7 +1477,10 @@ function notizfeldOeffnen(x, y) {
       breite = Math.max(breite, BILD_MIN_BREITE);
     }
 
+    // Nie schmaler als die Knopfzeile braucht
+    breite = Math.max(breite, NEU_MIN_BREITE);
     breite = Math.min(breite, WAND_BREITE - x);
+
     notiz.style.width = breite + 'px';
 
     hoeheAnpassen(notiz, feld);
@@ -1366,7 +1528,44 @@ function notizfeldOeffnen(x, y) {
     await waendeLaden();
   }
 
-  feld.addEventListener('blur', fertig);
+  // ===== Knöpfe zum Bestätigen und Abbrechen =====
+  const reihe = document.createElement('div');
+  reihe.className = 'notizAbschluss';
+
+  const anpinnen = document.createElement('button');
+  anpinnen.type = 'button';
+  anpinnen.className = 'malKnopf malHaupt';
+  anpinnen.textContent = 'Anpinnen';
+
+  const abbrechen = document.createElement('button');
+  abbrechen.type = 'button';
+  abbrechen.className = 'malKnopf';
+  abbrechen.textContent = 'Abbrechen';
+
+  reihe.appendChild(anpinnen);
+  reihe.appendChild(abbrechen);
+  notiz.appendChild(reihe);
+
+  anpinnen.addEventListener('click', function (event) {
+    event.stopPropagation();
+    fertig();
+  });
+
+  abbrechen.addEventListener('click', function (event) {
+    event.stopPropagation();
+    feld.value = '';
+    fertig();
+  });
+
+
+  // Klick auf die eigenen Knöpfe soll nicht als
+  // "Feld verlassen" gewertet werden
+  feld.addEventListener('blur', function (event) {
+    if (event.relatedTarget && notiz.contains(event.relatedTarget)) {
+      return;
+    }
+    fertig();
+  });
 
   feld.addEventListener('keydown', function (event) {
     if (event.key === 'Enter' && !event.shiftKey) {
@@ -1445,7 +1644,24 @@ function neueNotizAn(clientX, clientY) {
 
 const ereignisse = new EventSource('/api/ereignisse');
 
-ereignisse.addEventListener('message', function () {
+ereignisse.addEventListener('message', function (event) {
+  let daten = null;
+
+  try {
+    daten = JSON.parse(event.data);
+  } catch (fehler) {
+    daten = { typ: 'aktualisiert' };     // ältere Meldungsform
+  }
+
+  // Live-Bewegung eines anderen Geräts: nur diese eine
+  // Notiz verschieben, nicht die ganze Wand neu zeichnen
+  if (daten.typ === 'bewegt') {
+    if (daten.sender !== KLIENT_ID) {
+      fremdeBewegung(daten);
+    }
+    return;
+  }
+
   // Die Meldung stammt von unserer eigenen Änderung -
   // die Wand steht hier schon richtig, neu zeichnen
   // würde nur Bilder kurz verschwinden lassen.

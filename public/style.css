@@ -427,6 +427,14 @@ button:hover {
   touch-action: none;
 }
 
+/* Gemalte Zettel dürfen größer werden.
+   Muss zu BILD_MAX_BREITE / BILD_MAX_HOEHE in
+   pinnwand.js und zu server.js passen! */
+.notiz.mitZeichnung {
+  max-width: 700px;
+  max-height: 700px;
+}
+
 .notiz.wirdGezogen {
   cursor: grabbing;
   border-color: #6b6a62;
@@ -583,7 +591,7 @@ button:hover {
   border-right: 2px solid;
   border-bottom: 2px solid;
   border-color: inherit;
-  border-bottom-right-radius: 20px;
+  border-bottom-right-radius: 16px;
   opacity: 0.7;
   cursor: ew-resize;
   z-index: 2;
@@ -598,14 +606,80 @@ button:hover {
 }
 
 
+/* ===== Knopfzeile beim Schreiben einer Notiz =====
+   Höhe muss zu KNOPF_ZEILE in pinnwand.js passen */
+.notizAbschluss {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 8px;
+  display: flex;
+  gap: 6px;
+}
+
+/* Die beiden Knöpfe teilen sich den Platz und ragen
+   nicht über den Zettel hinaus */
+.notizAbschluss .malKnopf {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 6px 4px;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Platz für die Knöpfe freihalten */
+.notiz.neu textarea {
+  bottom: 48px;
+}
+
+
 /* ============================================
    MALFLÄCHE (Befehl /paint)
    ============================================ */
 .notiz.malen {
-  padding: 8px;
+  /* Oben Platz für den Namen, sonst deckt die
+     Leinwand ihn ab */
+  padding: 32px 12px 12px 12px;
   max-width: none;
   max-height: none;
   cursor: default;
+}
+
+.malBuehne {
+  position: relative;
+  display: block;
+}
+
+/* Griff zum Verändern der Leinwandgröße -
+   sitzt unten rechts im Zettel */
+.malGriff {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  width: 20px;
+  height: 20px;
+  border-right: 3px solid #edebe4;
+  border-bottom: 3px solid #edebe4;
+  border-bottom-right-radius: 16px;
+  cursor: nwse-resize;
+  touch-action: none;
+  opacity: 0.8;
+}
+
+.malGriff:hover {
+  opacity: 1;
+}
+
+.malWerkzeuge {
+  box-sizing: border-box;
+}
+
+.malEimer {
+  padding: 4px 8px;
+  font-size: 15px;
+  line-height: 1;
 }
 
 .notiz.malen::after {
@@ -712,7 +786,7 @@ button:hover {
     height: 18px;
     border-right-width: 3px;
     border-bottom-width: 3px;
-    border-bottom-right-radius: 20px;
+    border-bottom-right-radius: 16px;
     opacity: 0.9;
   }
 
