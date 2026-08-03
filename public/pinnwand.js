@@ -120,15 +120,19 @@ function passSkala() {
 function deckSkala() {
   const breite = rahmen.clientWidth / WAND_BREITE;
   const hoehe = rahmen.clientHeight / WAND_HOEHE;
-  return Math.max(breite, hoehe);
+
+  // Ein Tausendstel Zugabe: bei krummen Zoomstufen bleibt
+  // sonst durch Rundung ein halber Pixel Spalt am Rand.
+  return Math.max(breite, hoehe) * 1.001;
 }
 
 
-// Untere Grenze fürs Zoomen. Bewusst passSkala, damit man
-// mit dem Knopf "alles zeigen" auch auf dem Handy die
-// komplette Wand sehen kann.
+// Untere Grenze fürs Zoomen: deckSkala.
+// Damit kann nie ein Bereich entstehen, in dem man
+// nichts erstellen kann - die Wand füllt den Rahmen
+// in jeder Zoomstufe vollständig aus.
 function minSkala() {
-  return passSkala();
+  return deckSkala();
 }
 
 
@@ -177,9 +181,9 @@ function zoomenAufPunkt(neueSkala, clientX, clientY) {
 }
 
 
-// Knopf ⛶ - die ganze Wand anzeigen
+// Knopf ⛶ - größtmöglicher Ausschnitt ohne Lücken
 function allesZeigen() {
-  skala = passSkala();
+  skala = deckSkala();
   ansichtAnwenden();
 }
 
