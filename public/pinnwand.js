@@ -102,10 +102,30 @@ function begrenzen(wert, min, max) {
 // ============================================
 
 // Math.max = die Wand füllt den Rahmen immer aus
-function minSkala() {
+// Ganze Wand sichtbar - dabei bleiben oben/unten oder
+// links/rechts Ränder frei, weil die Verhältnisse
+// von Wand und Fenster nicht übereinstimmen.
+function passSkala() {
+  const breite = rahmen.clientWidth / WAND_BREITE;
+  const hoehe = rahmen.clientHeight / WAND_HOEHE;
+  return Math.min(breite, hoehe);
+}
+
+
+// Wand füllt den Rahmen randlos aus - dafür ragt sie
+// über einen Rand hinaus. Das ist die Standardansicht.
+function deckSkala() {
   const breite = rahmen.clientWidth / WAND_BREITE;
   const hoehe = rahmen.clientHeight / WAND_HOEHE;
   return Math.max(breite, hoehe);
+}
+
+
+// Untere Grenze fürs Zoomen. Bewusst passSkala, damit man
+// mit dem Knopf "alles zeigen" auch auf dem Handy die
+// komplette Wand sehen kann.
+function minSkala() {
+  return passSkala();
 }
 
 
@@ -154,8 +174,16 @@ function zoomenAufPunkt(neueSkala, clientX, clientY) {
 }
 
 
+// Knopf ⛶ - die ganze Wand anzeigen
 function allesZeigen() {
-  skala = minSkala();
+  skala = passSkala();
+  ansichtAnwenden();
+}
+
+
+// Beim Öffnen: Rahmen randlos gefüllt
+function standardAnsicht() {
+  skala = deckSkala();
   ansichtAnwenden();
 }
 
@@ -286,10 +314,26 @@ wand.addEventListener('pointerdown', function (event) {
     ansichtAnwenden();
   }
 
-  function schiebenFertig() {
+  function schiebenFertig(endEvent) {
     window.removeEventListener('pointermove', schieben);
     window.removeEventListener('pointerup', schiebenFertig);
     window.removeEventListener('pointercancel', schiebenFertig);
+
+    if (!endEvent || zoomGeste) {
+      return;
+    }
+
+    // Kaum bewegt? Dann war es ein Tipp und kein Schieben.
+    const weg = Math.abs(endEvent.clientX - startX) +
+                Math.abs(endEvent.clientY - startY);
+
+    if (weg > TIPP_TOLERANZ) {
+      return;
+    }
+
+    if (istDoppeltipp(endEvent.clientX, endEvent.clientY)) {
+      neueNotizAn(endEvent.clientX, endEvent.clientY);
+    }
   }
 
   window.addEventListener('pointermove', schieben);
@@ -842,11 +886,8 @@ function anzeigen() {
       }
 
     } else if (eintrag.darf_loeschen && !nurLesen()) {
-      notiz.title = 'Doppelklick zum Entfernen';
-      notiz.addEventListener('dblclick', function (event) {
-        event.stopPropagation();     // nicht als neue Notiz werten
-        notizLoeschen(eintrag.id);
-      });
+      // Gelöscht wird per Doppeltipp - erkannt in ziehenAktivieren
+      notiz.title = 'Zweimal antippen zum Entfernen';
     }
 
     notiz.appendChild(text);
@@ -954,6 +995,10 @@ function ziehenAktivieren(element, eintrag) {
     const griffX = start.x - eintrag.x;
     const griffY = start.y - eintrag.y;
 
+    // Für die Doppeltipp-Erkennung beim Löschen
+    const tippStartX = event.clientX;
+    const tippStartY = event.clientY;
+
     let letzteX = eintrag.x;
     let letzteY = eintrag.y;
 
@@ -982,13 +1027,34 @@ function ziehenAktivieren(element, eintrag) {
     }
 
 
-    function loslassen() {
+    function loslassen(endEvent) {
       element.removeEventListener('pointermove', bewegen);
       element.removeEventListener('pointerup', loslassen);
       element.removeEventListener('pointercancel', loslassen);
 
       element.classList.remove('wirdGezogen');
       ziehtGerade = false;
+
+      // Befehlsbilder: zweimal antippen entfernt sie.
+      // Nur wenn dabei kaum bewegt wurde.
+      if (endEvent && eintrag.nurBild && eintrag.darf_loeschen) {
+        const weg = Math.abs(endEvent.clientX - tippStartX) +
+                    Math.abs(endEvent.clientY - tippStartY);
+
+        if (weg <= TIPP_TOLERANZ) {
+          if (letzteNotizId === eintrag.id &&
+              Date.now() - letzterNotizTipp < DOPPEL_ZEIT) {
+
+            letzterNotizTipp = 0;
+            letzteNotizId = null;
+            notizLoeschen(eintrag.id);
+            return;
+          }
+
+          letzterNotizTipp = Date.now();
+          letzteNotizId = eintrag.id;
+        }
+      }
 
       eintrag.x = letzteX;
       eintrag.y = letzteY;
@@ -1094,23 +1160,58 @@ function notizfeldOeffnen(x, y) {
 }
 
 
-wand.addEventListener('dblclick', function (event) {
-  if (event.target !== wand) {
-    return;
+// ============================================
+//  Doppeltippen auf die freie Fläche = neue Notiz
+//
+//  Wir werten das selbst aus, statt "dblclick" zu
+//  benutzen: Auf dem iPhone kommt dieses Ereignis
+//  bei touch-action: none oft gar nicht an.
+// ============================================
+
+const DOPPEL_ZEIT = 400;     // Millisekunden zwischen zwei Tippern
+const DOPPEL_ABSTAND = 30;   // erlaubte Abweichung in Pixeln
+const TIPP_TOLERANZ = 8;     // darüber gilt es als Ziehen, nicht als Tipp
+
+let letzterTipp = 0;
+let letzterTippX = 0;
+let letzterTippY = 0;
+
+// Doppeltipp auf ein Befehlsbild (zum Entfernen)
+let letzterNotizTipp = 0;
+let letzteNotizId = null;
+
+
+function istDoppeltipp(x, y) {
+  const jetzt = Date.now();
+
+  const nahGenug = Math.abs(x - letzterTippX) < DOPPEL_ABSTAND &&
+                   Math.abs(y - letzterTippY) < DOPPEL_ABSTAND;
+
+  if (jetzt - letzterTipp < DOPPEL_ZEIT && nahGenug) {
+    letzterTipp = 0;         // zurücksetzen, sonst zählt der dritte Tipp mit
+    return true;
   }
 
+  letzterTipp = jetzt;
+  letzterTippX = x;
+  letzterTippY = y;
+  return false;
+}
+
+
+function neueNotizAn(clientX, clientY) {
   if (nurLesen()) {
     statusSetzen('Ältere Wände sind nur zum Ansehen.');
     return;
   }
 
-  const punkt = zuWand(event.clientX, event.clientY);
+  const punkt = zuWand(clientX, clientY);
 
   const x = begrenzen(punkt.x - NOTIZ_BREITE / 2, 0, WAND_BREITE - NOTIZ_BREITE);
   const y = begrenzen(punkt.y - NOTIZ_HOEHE / 2, 0, WAND_HOEHE - NOTIZ_HOEHE);
 
   notizfeldOeffnen(Math.round(x), Math.round(y));
-});
+}
 
 
 // ============================================
@@ -1136,7 +1237,7 @@ window.addEventListener('focus', function () {
 //  Start
 // ============================================
 
-allesZeigen();
+standardAnsicht();
 
 waendeLaden().then(function () {
   notizenHolen();
