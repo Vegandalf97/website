@@ -180,7 +180,13 @@ function zoomenAufPunkt(neueSkala, clientX, clientY) {
   const kasten = rahmen.getBoundingClientRect();
   const vorher = zuWand(clientX, clientY);
 
-  skala = begrenzen(neueSkala, minSkala(), MAX_SKALA);
+  // Wer unter die Deckung zoomt, will die Übersicht -
+  // egal ob mit Knopf, Mausrad oder zwei Fingern
+  if (neueSkala < deckSkala()) {
+    uebersicht = true;
+  }
+
+  skala = begrenzen(neueSkala, passSkala(), MAX_SKALA);
 
   versatzX = (clientX - kasten.left) - vorher.x * skala;
   versatzY = (clientY - kasten.top) - vorher.y * skala;
@@ -287,8 +293,14 @@ rahmen.addEventListener('pointermove', function (event) {
   const mitteX = (punkte[0].x + punkte[1].x) / 2;
   const mitteY = (punkte[0].y + punkte[1].y) / 2;
 
-  skala = begrenzen(gesteStart.skala * (jetzt / gesteStart.abstand),
-                    minSkala(), MAX_SKALA);
+  const ziel = gesteStart.skala * (jetzt / gesteStart.abstand);
+
+  // Auseinanderziehen bis zur vollen Übersicht erlauben
+  if (ziel < deckSkala()) {
+    uebersicht = true;
+  }
+
+  skala = begrenzen(ziel, passSkala(), MAX_SKALA);
 
   versatzX = (mitteX - kasten.left) - gesteStart.mitte.x * skala;
   versatzY = (mitteY - kasten.top) - gesteStart.mitte.y * skala;
