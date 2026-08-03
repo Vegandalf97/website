@@ -73,6 +73,9 @@ let zoomGeste = false;
 const hoehenSpeicher = new Map();
 const groessenSpeicher = new Map();
 
+// Gemerkte Seitenverhältnisse der Bilder (Adresse -> Maße)
+const bildMasse = new Map();
+
 let messNotiz = null;
 let messAbsatz = null;
 
@@ -575,8 +578,27 @@ function inhaltAufbauen(absatz, nachricht, notiz) {
       // und unser Verschieben bekommt keine Ereignisse mehr
       bild.draggable = false;
 
+      // Seitenverhältnis von früher schon bekannt?
+      // Dann steht die Höhe sofort fest und die Notiz
+      // klappt nicht erst zusammen und wieder auf.
+      const mass = bildMasse.get(bildAdresse);
+
+      if (mass) {
+        bild.style.aspectRatio = mass.breite + ' / ' + mass.hoehe;
+      }
+
       // Bilder laden verzögert - danach Höhe neu setzen
       bild.addEventListener('load', function () {
+        if (bild.naturalWidth && bild.naturalHeight) {
+          bildMasse.set(bildAdresse, {
+            breite: bild.naturalWidth,
+            hoehe: bild.naturalHeight
+          });
+
+          bild.style.aspectRatio =
+            bild.naturalWidth + ' / ' + bild.naturalHeight;
+        }
+
         hoeheAnpassen(notiz, absatz);
       });
 
@@ -792,6 +814,9 @@ async function layoutSpeichern(eintrag, element) {
     }
 
     const daten = await antwort.json();
+
+    // Die gleich folgende Server-Meldung stammt von uns selbst
+    eigeneAenderungBis = Date.now() + 1500;
 
     eintrag.x = daten.x;
     eintrag.y = daten.y;
@@ -1180,6 +1205,10 @@ let letzterTippY = 0;
 let letzterNotizTipp = 0;
 let letzteNotizId = null;
 
+// Nach eigenen Änderungen kurz nicht neu zeichnen -
+// sonst flackert die Wand bei jedem Verschieben
+let eigeneAenderungBis = 0;
+
 
 function istDoppeltipp(x, y) {
   const jetzt = Date.now();
@@ -1221,6 +1250,13 @@ function neueNotizAn(clientX, clientY) {
 const ereignisse = new EventSource('/api/ereignisse');
 
 ereignisse.addEventListener('message', function () {
+  // Die Meldung stammt von unserer eigenen Änderung -
+  // die Wand steht hier schon richtig, neu zeichnen
+  // würde nur Bilder kurz verschwinden lassen.
+  if (Date.now() < eigeneAenderungBis) {
+    return;
+  }
+
   notizenHolen();
 });
 
