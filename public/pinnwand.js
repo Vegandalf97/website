@@ -127,16 +127,24 @@ function deckSkala() {
 }
 
 
-// Untere Grenze fürs Zoomen: deckSkala.
-// Damit kann nie ein Bereich entstehen, in dem man
-// nichts erstellen kann - die Wand füllt den Rahmen
-// in jeder Zoomstufe vollständig aus.
+// Untere Grenze fürs Zoomen.
+// Normalerweise deckSkala - dann gibt es nie Flächen,
+// auf denen man nichts anlegen kann.
+// Nur im Übersichtsmodus (Knopf ⛶) darf weiter heraus
+// gezoomt werden, um die ganze Wand zu sehen.
+let uebersicht = false;
+
 function minSkala() {
-  return deckSkala();
+  return uebersicht ? passSkala() : deckSkala();
 }
 
 
 function ansichtAnwenden() {
+  // Sobald wieder hineingezoomt wird, endet der Übersichtsmodus
+  if (uebersicht && skala > deckSkala()) {
+    uebersicht = false;
+  }
+
   skala = begrenzen(skala, minSkala(), MAX_SKALA);
 
   const sichtbareBreite = WAND_BREITE * skala;
@@ -181,9 +189,12 @@ function zoomenAufPunkt(neueSkala, clientX, clientY) {
 }
 
 
-// Knopf ⛶ - größtmöglicher Ausschnitt ohne Lücken
+// Knopf ⛶ - Übersicht: die ganze Wand auf einmal.
+// Dabei bleiben oben/unten oder links/rechts Ränder frei;
+// das ist hier gewollt und endet, sobald man hineinzoomt.
 function allesZeigen() {
-  skala = deckSkala();
+  uebersicht = true;
+  skala = passSkala();
   ansichtAnwenden();
 }
 
@@ -970,9 +981,15 @@ function ziehenAktivieren(element, eintrag) {
 
     // Reine Befehlsbilder behalten ihre Größe -
     // dort gibt es keinen Ziehgriff.
+    // Die Griffzone in Bildschirmpixeln. Bei kleinem Zoom
+    // wäre GRIFF_ZONE * skala nur eine Handvoll Pixel -
+    // mit dem Finger nicht zu treffen. Deshalb ein Mindestmaß.
+    const mindestZone = event.pointerType === 'mouse' ? 24 : 44;
+    const zone = Math.max(GRIFF_ZONE * skala, mindestZone);
+
     const inEcke = !eintrag.nurBild &&
-                   event.clientX > kasten.right - GRIFF_ZONE * skala &&
-                   event.clientY > kasten.bottom - GRIFF_ZONE * skala;
+                   event.clientX > kasten.right - zone &&
+                   event.clientY > kasten.bottom - zone;
 
     ziehtGerade = true;
     element.setPointerCapture(event.pointerId);

@@ -564,6 +564,33 @@ button:hover {
 }
 
 
+/* ===== Touch-Geräte: größere Bedienflächen =====
+   pointer: coarse trifft Finger, nicht Mauszeiger */
+@media (pointer: coarse) {
+
+  .notiz::after {
+    right: 6px;
+    bottom: 6px;
+    width: 26px;
+    height: 26px;
+    border-right-width: 3px;
+    border-bottom-width: 3px;
+    border-bottom-right-radius: 10px;
+    opacity: 0.9;
+  }
+
+  .loeschen {
+    width: 52px;
+    height: 44px;
+    font-size: 26px;
+  }
+
+  .notiz small {
+    right: 56px;
+  }
+}
+
+
 /* ============================================
    SCHMALE, TRANSPARENTE BILDLAUFLEISTE
    ============================================ */
