@@ -1,0 +1,17 @@
+{
+  "comment": [
+    "nodemon startet den Server neu, sobald sich eine Datei ändert.",
+    "Standardmäßig überwacht es ALLES - auch public/.",
+    "",
+    "Dateien in public/ liefert der Server aber nur aus; er liest sie",
+    "bei jeder Anfrage neu. Ein Neustart bringt dort also nichts,",
+    "kostet aber eine Sekunde, in der jede laufende Anfrage abbricht.",
+    "Genau daher kam die Meldung 'Layout konnte nicht gespeichert werden'.",
+    "",
+    "Also: nur auf server.js und die Einstellungen achten."
+  ],
+
+  "watch": ["server.js", "package.json", ".env"],
+  "ignore": ["public/**", "node_modules/**"],
+  "ext": "js,json"
+}

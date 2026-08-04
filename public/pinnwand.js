@@ -158,6 +158,15 @@ function winkelNormal(grad) {
 }
 
 
+// Kurze Pause zum Abwarten. setTimeout kann kein await,
+// deshalb einmal in ein Versprechen eingepackt.
+function neuerVersuchWarten(millisekunden) {
+  return new Promise(function (fertig) {
+    setTimeout(fertig, millisekunden);
+  });
+}
+
+
 function begrenzen(wert, min, max) {
   return Math.min(Math.max(wert, min), max);
 }
@@ -994,18 +1003,33 @@ async function layoutSpeichern(eintrag, element) {
 
   offeneSpeicherungen = offeneSpeicherungen + 1;
 
+  const anfrage = {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      x: Math.round(eintrag.x),
+      y: Math.round(eintrag.y),
+      breite: breite,
+      hoehe: hoehe,
+      winkel: winkelNormal(eintrag.winkel || 0)
+    })
+  };
+
   try {
-    const antwort = await fetch('/api/zettel/' + eintrag.id + '/layout', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        x: Math.round(eintrag.x),
-        y: Math.round(eintrag.y),
-        breite: breite,
-        hoehe: hoehe,
-        winkel: winkelNormal(eintrag.winkel || 0)
-      })
-    });
+    let antwort;
+
+    try {
+      antwort = await fetch('/api/zettel/' + eintrag.id + '/layout', anfrage);
+
+    } catch (ersterVersuch) {
+      // Ein einzelner Aussetzer ist meist der Serverneustart
+      // oder eine kurz schwächelnde Verbindung. Einmal
+      // nachfassen, bevor wir den Nutzer beunruhigen.
+      // Das Wiederholen ist gefahrlos: Die Anfrage setzt
+      // feste Werte, sie rechnet nichts dazu.
+      await neuerVersuchWarten(400);
+      antwort = await fetch('/api/zettel/' + eintrag.id + '/layout', anfrage);
+    }
 
     if (!antwort.ok) {
       console.error('Layout abgelehnt, Status', antwort.status);
@@ -1039,7 +1063,11 @@ async function layoutSpeichern(eintrag, element) {
     }
 
   } catch (fehler) {
-    statusSetzen('Layout konnte nicht gespeichert werden.');
+    // Auch der zweite Versuch ging daneben - jetzt darf
+    // es der Nutzer erfahren. Die Meldung verschwindet
+    // beim nächsten erfolgreichen Laden von selbst.
+    console.error('Layout endgültig fehlgeschlagen', fehler);
+    statusSetzen('Verschiebung nicht gespeichert – Verbindung prüfen.');
 
   } finally {
     offeneSpeicherungen = offeneSpeicherungen - 1;
