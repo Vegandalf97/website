@@ -38,9 +38,27 @@ const BILD_MAX_HOEHE = 700;
 // kein Löschknopf, keine Größenänderung
 const BILD_RAND = 0;
 
-// Alle Befehlsbilder werden gleich breit dargestellt,
-// unabhängig davon, wie groß die Bilddatei ist
-const BEFEHL_BREITE = 200;
+// Anzeigebreite der Befehlsbilder. Hochkant-Bilder brauchen
+// weniger Breite, um gleich hoch zu wirken.
+const BEFEHL_BREITE = 240;
+
+// ACHTUNG: Diese Liste gehört zu BEFEHLE (weiter unten,
+// bei "===== Befehle ====="). Ein neuer Kopf braucht IMMER
+// einen Eintrag in beiden Listen.
+// Breite ausrechnen:  163 * (Bildbreite / Bildhöhe)
+// Dann sind alle Köpfe etwa gleich hoch.
+const BEFEHL_BREITEN = {
+  '/merz': 120,     // hochkant (250 x 348)
+  '/trump': 240,    // querformat (1419 x 946)
+  '/kim': 110,      // hochkant (1024 x 1536)
+  '/china': 160     // fast quadratisch (824 x 841)
+};
+
+
+function befehlsBreite(nachricht) {
+  const wert = BEFEHL_BREITEN[nachricht.trim().toLowerCase()];
+  return wert ? wert : BEFEHL_BREITE;
+}
 
 // Höhe der Knopfzeile beim Schreiben einer neuen Notiz.
 // Muss zu .notizAbschluss in style.css passen.
@@ -119,7 +137,24 @@ function nurLesen() {
 
 
 function beschaeftigt() {
-  return ziehtGerade || schreibtGerade || offeneSpeicherungen > 0;
+  // Auch während fliegende Köpfe unterwegs sind, darf die Wand
+  // nicht neu geladen werden: Ihre Position steht nur im
+  // Arbeitsspeicher, in der Datenbank noch die alte. Ein
+  // Neuladen würde sie zurück an den Start setzen.
+  return ziehtGerade || schreibtGerade
+      || offeneSpeicherungen > 0
+      || physikLaeuft;
+}
+
+
+// Bringt jeden Winkel in den Bereich 0 bis 359.
+// -90 wird zu 270, 725 wird zu 5. Das Modulo allein
+// reicht nicht: In JavaScript ist -90 % 360 gleich -90,
+// deshalb einmal 360 addieren und erneut teilen.
+function winkelNormal(grad) {
+  // Erst runden, dann in den Bereich holen. Andersherum
+  // würde aus 359,6 die 360 - und die gibt es hier nicht.
+  return ((Math.round(grad) % 360) + 360) % 360;
 }
 
 
@@ -520,11 +555,18 @@ const BILD_ENDUNGEN = /\.(png|jpe?g|gif|webp|avif|bmp|svg)(\?.*)?$/i;
 
 // ===== Befehle =====
 // Wer "/merz" schreibt, bekommt das Bild statt des Textes.
-// Neue Befehle einfach hier ergänzen - das Bild muss in
-// public/bilder/ liegen.
+//
+// Neuen Kopf hinzufügen - drei Schritte:
+//   1. Bild nach public/bilder/ legen (klein rechnen, < 200 KB)
+//   2. Hier eintragen - Dateiname EXAKT, auch die Endung
+//   3. Breite in BEFEHL_BREITEN eintragen (ganz oben in dieser Datei)
+// Alles Weitere (Anstoßen, Fliegen, Drehen, Löschen per
+// Doppeltipp) passiert von allein.
 const BEFEHLE = {
   '/merz': '/bilder/merz.png',
-  '/trump': '/bilder/trump.png'
+  '/trump': '/bilder/trump.png',
+  '/kim': '/bilder/kim.png',
+  '/china': '/bilder/china.jpg'
 };
 
 
@@ -960,7 +1002,8 @@ async function layoutSpeichern(eintrag, element) {
         x: Math.round(eintrag.x),
         y: Math.round(eintrag.y),
         breite: breite,
-        hoehe: hoehe
+        hoehe: hoehe,
+        winkel: winkelNormal(eintrag.winkel || 0)
       })
     });
 
@@ -980,6 +1023,16 @@ async function layoutSpeichern(eintrag, element) {
     eintrag.hoehe = daten.hoehe;
     eintrag.ebene = daten.ebene;
 
+    // Nur übernehmen, wenn der Server wirklich einen Winkel
+    // schickt. Sonst würde ein alter Server (der die Spalte
+    // noch nicht kennt) unser gutes "37" mit undefined
+    // überschreiben - und beim nächsten Speichern ginge
+    // eine 0 in die Datenbank.
+    if (daten.winkel !== undefined && daten.winkel !== null) {
+      eintrag.winkel = daten.winkel;
+      winkelSpeicher.set(eintrag.id, daten.winkel);
+    }
+
     if (element && element.isConnected) {
       element.style.left = daten.x + 'px';
       element.style.top = daten.y + 'px';
@@ -995,9 +1048,290 @@ async function layoutSpeichern(eintrag, element) {
 }
 
 
+// ============================================
+//  KLEINE PHYSIK FÜR BEFEHLSBILDER
+// ============================================
+
+// Wie viel Schwung pro Bild übrig bleibt (1 = kein Verlust)
+const REIBUNG = 0.99;
+
+// Darunter gilt ein Objekt als stehend
+const MIN_TEMPO = 0.20;
+
+// Wie stark ein Stoß wirkt
+const STOSS_FAKTOR = 1.5;
+
+// Wie viel Schwung beim Abprallen erhalten bleibt
+const PRALL = 0.7;
+
+// Höchstgeschwindigkeit, damit nichts durch die Wand schießt
+const MAX_TEMPO = 40;
+
+// Wie stark ein außermittiger Stoß ins Drehen versetzt
+const DRALL_FAKTOR = 0.25;
+
+// Grad pro Bild, mehr wird schwindelig
+const MAX_DREHUNG = 15;
+
+// Alle beweglichen Objekte: Kennung -> Zustand
+const koerper = new Map();
+
+// Zuletzt bekannte Drehung je Notiz: Kennung -> Grad.
+// Die Datenbank ist die eigentliche Quelle, aber sie
+// hinkt hinterher: Zwischen "Kopf bleibt liegen" und
+// "PATCH ist durch" liegen einige hundert Millisekunden.
+// Wird die Wand genau in dieser Lücke neu aufgebaut,
+// stünde der Kopf wieder gerade. Dieses Gedächtnis
+// überlebt das Neuaufbauen und schließt die Lücke -
+// dasselbe Prinzip wie bildMasse bei den Bildgrößen.
+const winkelSpeicher = new Map();
+
+let physikLaeuft = false;
+
+
+function koerperEintragen(eintrag, element) {
+  koerper.set(eintrag.id, {
+    eintrag: eintrag,
+    element: element,
+    vx: 0,
+    vy: 0,
+    // Die gespeicherte Drehung übernehmen, nicht bei null
+    // anfangen - sonst richtet sich der Kopf beim
+    // Neuzeichnen wieder auf
+    winkel: eintrag.winkel || 0,
+    drall: 0,           // Drehgeschwindigkeit in Grad pro Bild
+    letzteMeldung: 0,
+    inBewegung: false
+  });
+}
+
+
+// Überlappen sich zwei Rechtecke?
+function ueberlappt(a, b) {
+  return a.x < b.x + b.breite &&
+         a.x + a.breite > b.x &&
+         a.y < b.y + b.hoehe &&
+         a.y + a.hoehe > b.y;
+}
+
+
+// Ein bewegtes Rechteck stößt alle Objekte an, die es berührt.
+// tempoX/tempoY ist die Geschwindigkeit des Stoßenden.
+function anstossen(rechteck, tempoX, tempoY, ausnahmeId) {
+  const wucht = Math.sqrt(tempoX * tempoX + tempoY * tempoY);
+
+  if (wucht < 0.5) {
+    return;                      // zu langsam, kein Stoß
+  }
+
+  koerper.forEach(function (k, id) {
+    // Ein Objekt stößt sich nicht selbst an - sonst würde
+    // ein festgehaltenes Bild sofort davonfliegen
+    if (id === ausnahmeId) {
+      return;
+    }
+
+    const ziel = {
+      x: k.eintrag.x,
+      y: k.eintrag.y,
+      breite: k.element.offsetWidth,
+      hoehe: k.element.offsetHeight
+    };
+
+    if (!ueberlappt(rechteck, ziel)) {
+      return;
+    }
+
+    // Richtung von Mitte zu Mitte
+    let dx = (ziel.x + ziel.breite / 2) - (rechteck.x + rechteck.breite / 2);
+    let dy = (ziel.y + ziel.hoehe / 2) - (rechteck.y + rechteck.hoehe / 2);
+
+    const laenge = Math.sqrt(dx * dx + dy * dy) || 1;
+    dx = dx / laenge;
+    dy = dy / laenge;
+
+    // Je schneller der Stoß, desto mehr Schwung
+    k.vx = begrenzen(k.vx + dx * wucht * STOSS_FAKTOR, -MAX_TEMPO, MAX_TEMPO);
+    k.vy = begrenzen(k.vy + dy * wucht * STOSS_FAKTOR, -MAX_TEMPO, MAX_TEMPO);
+
+    // Drehung: Trifft der Stoß mittig, schiebt er nur.
+    // Trifft er seitlich versetzt, dreht er zusätzlich.
+    // Das Kreuzprodukt misst genau diesen seitlichen Anteil:
+    // es ist null bei geradem Stoß und am größten bei
+    // einem Streifschuss.
+    const seitlich = dx * tempoY - dy * tempoX;
+
+    k.drall = begrenzen(k.drall + seitlich * DRALL_FAKTOR,
+                        -MAX_DREHUNG, MAX_DREHUNG);
+
+    k.inBewegung = true;
+    physikStarten();
+  });
+}
+
+
+// Zwei fliegende Köpfe stoßen sich gegenseitig ab.
+// Anders als bei anstossen() haben hier BEIDE Seiten
+// Schwung, den sie miteinander tauschen.
+function koerperStossen(a, b) {
+  const aBreite = a.element.offsetWidth;
+  const aHoehe = a.element.offsetHeight;
+  const bBreite = b.element.offsetWidth;
+  const bHoehe = b.element.offsetHeight;
+
+  const rechteckA = { x: a.eintrag.x, y: a.eintrag.y, breite: aBreite, hoehe: aHoehe };
+  const rechteckB = { x: b.eintrag.x, y: b.eintrag.y, breite: bBreite, hoehe: bHoehe };
+
+  if (!ueberlappt(rechteckA, rechteckB)) {
+    return;
+  }
+
+  let dx = (b.eintrag.x + bBreite / 2) - (a.eintrag.x + aBreite / 2);
+  let dy = (b.eintrag.y + bHoehe / 2) - (a.eintrag.y + aHoehe / 2);
+
+  const laenge = Math.sqrt(dx * dx + dy * dy) || 1;
+  dx = dx / laenge;
+  dy = dy / laenge;
+
+  // Wie schnell nähern sie sich einander an?
+  // Entfernen sie sich bereits voneinander, darf kein
+  // zweiter Stoß folgen - sonst kleben sie zitternd
+  // aneinander und stoßen sich in jedem Bild erneut.
+  const naehern = (a.vx - b.vx) * dx + (a.vy - b.vy) * dy;
+
+  if (naehern <= 0) {
+    return;
+  }
+
+  // Beide bekommen die halbe Annäherung entgegengesetzt ab
+  const stoss = naehern * PRALL;
+
+  a.vx = begrenzen(a.vx - dx * stoss, -MAX_TEMPO, MAX_TEMPO);
+  a.vy = begrenzen(a.vy - dy * stoss, -MAX_TEMPO, MAX_TEMPO);
+  b.vx = begrenzen(b.vx + dx * stoss, -MAX_TEMPO, MAX_TEMPO);
+  b.vy = begrenzen(b.vy + dy * stoss, -MAX_TEMPO, MAX_TEMPO);
+
+  // Auch hier dreht der seitliche Anteil
+  const seitlich = dx * (a.vy - b.vy) - dy * (a.vx - b.vx);
+
+  a.drall = begrenzen(a.drall - seitlich * DRALL_FAKTOR, -MAX_DREHUNG, MAX_DREHUNG);
+  b.drall = begrenzen(b.drall + seitlich * DRALL_FAKTOR, -MAX_DREHUNG, MAX_DREHUNG);
+
+  a.inBewegung = true;
+  b.inBewegung = true;
+}
+
+
+function physikStarten() {
+  if (!physikLaeuft) {
+    physikLaeuft = true;
+    requestAnimationFrame(physikSchritt);
+  }
+}
+
+
+function physikSchritt() {
+  let nochAktiv = false;
+
+  // Erst prüfen, ob sich Köpfe gegenseitig treffen.
+  // Jedes Paar genau einmal: j beginnt bei i + 1,
+  // sonst würde A-B und danach B-A doppelt gerechnet.
+  const liste = Array.from(koerper.values());
+
+  for (let i = 0; i < liste.length; i++) {
+    for (let j = i + 1; j < liste.length; j++) {
+      if (liste[i].inBewegung || liste[j].inBewegung) {
+        koerperStossen(liste[i], liste[j]);
+      }
+    }
+  }
+
+  koerper.forEach(function (k) {
+    if (!k.inBewegung) {
+      return;
+    }
+
+    const breite = k.element.offsetWidth;
+    const hoehe = k.element.offsetHeight;
+
+    let x = k.eintrag.x + k.vx;
+    let y = k.eintrag.y + k.vy;
+
+    // An den Rändern abprallen
+    if (x < 0) {
+      x = 0;
+      k.vx = -k.vx * PRALL;
+    }
+    if (x > WAND_BREITE - breite) {
+      x = WAND_BREITE - breite;
+      k.vx = -k.vx * PRALL;
+    }
+    if (y < 0) {
+      y = 0;
+      k.vy = -k.vy * PRALL;
+    }
+    if (y > WAND_HOEHE - hoehe) {
+      y = WAND_HOEHE - hoehe;
+      k.vy = -k.vy * PRALL;
+    }
+
+    k.eintrag.x = Math.round(x);
+    k.eintrag.y = Math.round(y);
+
+    k.element.style.left = k.eintrag.x + 'px';
+    k.element.style.top = k.eintrag.y + 'px';
+
+    // Drehen. Die Position steckt weiterhin in left/top,
+    // transform macht ausschließlich die Drehung - so
+    // kommen sich beide nicht in die Quere.
+    k.winkel = winkelNormal(k.winkel + k.drall);
+    k.eintrag.winkel = k.winkel;
+    winkelSpeicher.set(k.eintrag.id, k.winkel);
+    k.element.style.transform = 'rotate(' + k.winkel + 'deg)';
+
+    // Reibung bremst - auch die Drehung
+    k.vx = k.vx * REIBUNG;
+    k.vy = k.vy * REIBUNG;
+    k.drall = k.drall * REIBUNG;
+
+    // Andere Geräte mitziehen lassen
+    const jetzt = Date.now();
+
+    if (jetzt - k.letzteMeldung > MELDE_ABSTAND) {
+      k.letzteMeldung = jetzt;
+      bewegungMelden(k.eintrag.id, k.eintrag.x, k.eintrag.y, null, null, k.winkel);
+    }
+
+    // Steht es fast still, ist Schluss - und die
+    // Endposition wird einmal gespeichert
+    if (Math.abs(k.vx) < MIN_TEMPO && Math.abs(k.vy) < MIN_TEMPO
+        && Math.abs(k.drall) < MIN_TEMPO) {
+      k.vx = 0;
+      k.vy = 0;
+      k.drall = 0;
+      k.inBewegung = false;
+      layoutSpeichern(k.eintrag, k.element);
+      return;
+    }
+
+    nochAktiv = true;
+  });
+
+  if (nochAktiv) {
+    requestAnimationFrame(physikSchritt);
+  } else {
+    physikLaeuft = false;
+
+    // Erst jetzt darf nachgeholt werden, was während
+    // der Bewegung zurückgestellt wurde
+    nachholenPruefen();
+  }
+}
+
+
 // Meldet die eigene Bewegung, ohne sie zu speichern.
 // Absichtlich ohne await - das darf ruhig unterwegs sein.
-function bewegungMelden(id, x, y, breite, hoehe) {
+function bewegungMelden(id, x, y, breite, hoehe, winkel) {
   fetch('/api/zettel/' + id + '/bewegt', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -1006,6 +1340,7 @@ function bewegungMelden(id, x, y, breite, hoehe) {
       y: Math.round(y),
       breite: breite ? Math.round(breite) : null,
       hoehe: hoehe ? Math.round(hoehe) : null,
+      winkel: winkel === undefined ? null : winkelNormal(winkel),
       sender: KLIENT_ID
     })
   }).catch(function () {
@@ -1035,6 +1370,14 @@ function fremdeBewegung(daten) {
   if (daten.hoehe) {
     element.style.height = daten.hoehe + 'px';
   }
+  if (daten.winkel !== null && daten.winkel !== undefined) {
+    element.style.transform = 'rotate(' + daten.winkel + 'deg)';
+
+    // Auch fremde Drehungen ins Gedächtnis - sonst würde
+    // unser eigener, älterer Wert sie beim nächsten
+    // Neuaufbauen wieder überschreiben
+    winkelSpeicher.set(daten.id, daten.winkel);
+  }
 
   // Auch die gemerkten Daten mitziehen, damit ein
   // späteres Neuzeichnen nicht zurückspringt
@@ -1046,6 +1389,9 @@ function fremdeBewegung(daten) {
     if (daten.x !== null) { eintrag.x = daten.x; }
     if (daten.y !== null) { eintrag.y = daten.y; }
     if (daten.breite) { eintrag.breite = daten.breite; }
+    if (daten.winkel !== null && daten.winkel !== undefined) {
+      eintrag.winkel = daten.winkel;
+    }
   }
 }
 
@@ -1076,6 +1422,7 @@ async function notizLoeschen(id) {
 function anzeigen() {
   wand.innerHTML = '';
   notizElemente.clear();
+  koerper.clear();
 
   notizen.forEach(function (eintrag, nummer) {
 
@@ -1103,7 +1450,7 @@ function anzeigen() {
     // Datenbank steht. Sonst wären /merz und /trump je nach
     // Bildgröße unterschiedlich groß.
     const breite = nurBild
-      ? BEFEHL_BREITE
+      ? befehlsBreite(eintrag.nachricht)
       : begrenzen(eintrag.breite, MIN_BREITE, maxBreite);
 
     const notiz = document.createElement('div');
@@ -1166,6 +1513,26 @@ function anzeigen() {
     eintrag.nurBild = nurBild;
     eintrag.absatz = text;
 
+    // Schiefe Köpfe bleiben schief. Das eigene Gedächtnis
+    // hat Vorrang vor der Datenbank: Es ist immer mindestens
+    // so aktuell wie sie, oft aktueller.
+    if (nurBild) {
+      const gemerkt = winkelSpeicher.get(eintrag.id);
+
+      eintrag.winkel = gemerkt !== undefined
+        ? gemerkt
+        : (eintrag.winkel || 0);
+
+      if (eintrag.winkel) {
+        notiz.style.transform = 'rotate(' + eintrag.winkel + 'deg)';
+      }
+    }
+
+    // Befehlsbilder sind anstoßbare Objekte
+    if (nurBild && !nurLesen()) {
+      koerperEintragen(eintrag, notiz);
+    }
+
     if (!nurLesen()) {
       ziehenAktivieren(notiz, eintrag);
     }
@@ -1198,6 +1565,16 @@ function ziehenAktivieren(element, eintrag) {
 
     obersteEbene = obersteEbene + 1;
     element.style.zIndex = obersteEbene;
+
+    // Wer festgehalten wird, hört auf zu fliegen
+    const eigenerKoerper = koerper.get(eintrag.id);
+
+    if (eigenerKoerper) {
+      eigenerKoerper.vx = 0;
+      eigenerKoerper.vy = 0;
+      eigenerKoerper.drall = 0;
+      eigenerKoerper.inBewegung = false;
+    }
 
     const kasten = element.getBoundingClientRect();
 
@@ -1289,6 +1666,11 @@ function ziehenAktivieren(element, eintrag) {
     let letzteY = eintrag.y;
     let letzteMeldung = 0;
 
+    // Der Weg im letzten Bild - das ist beim Loslassen
+    // die Wurfgeschwindigkeit
+    let wurfX = 0;
+    let wurfY = 0;
+
 
     function bewegen(bewegEvent) {
       if (zoomGeste) {
@@ -1308,6 +1690,18 @@ function ziehenAktivieren(element, eintrag) {
 
       element.style.left = neuX + 'px';
       element.style.top = neuY + 'px';
+
+      // Was gerade angestoßen wird, bekommt Schwung.
+      // Die Geschwindigkeit ist der Weg seit dem letzten Bild.
+      wurfX = neuX - letzteX;
+      wurfY = neuY - letzteY;
+
+      anstossen(
+        { x: neuX, y: neuY, breite: element.offsetWidth, hoehe: element.offsetHeight },
+        wurfX,
+        wurfY,
+        eintrag.id
+      );
 
       letzteX = neuX;
       letzteY = neuY;
@@ -1354,6 +1748,19 @@ function ziehenAktivieren(element, eintrag) {
 
       eintrag.x = letzteX;
       eintrag.y = letzteY;
+
+      // Köpfe fliegen weiter, wenn man sie in Bewegung
+      // loslässt - wie ein geworfener Ball.
+      const geworfen = koerper.get(eintrag.id);
+
+      if (geworfen && Math.abs(wurfX) + Math.abs(wurfY) > 2) {
+        geworfen.vx = begrenzen(wurfX, -MAX_TEMPO, MAX_TEMPO);
+        geworfen.vy = begrenzen(wurfY, -MAX_TEMPO, MAX_TEMPO);
+        geworfen.inBewegung = true;
+        physikStarten();
+        return;                  // Speichern übernimmt die Physik
+      }
+
       layoutSpeichern(eintrag, element);
     }
 
@@ -1690,6 +2097,54 @@ ereignisse.addEventListener('error', function () {
 window.addEventListener('focus', function () {
   waendeLaden().then(notizenHolen);
 });
+
+
+// ============================================
+//  Hilfefenster
+// ============================================
+
+const hilfeKnopf = document.getElementById('hilfeKnopf');
+const hilfeFenster = document.getElementById('hilfeFenster');
+
+if (hilfeKnopf && hilfeFenster) {
+
+  function hilfeZeigen(offen) {
+    hilfeFenster.hidden = !offen;
+    hilfeKnopf.setAttribute('aria-expanded', offen ? 'true' : 'false');
+  }
+
+  hilfeKnopf.addEventListener('click', function () {
+    hilfeZeigen(hilfeFenster.hidden);
+  });
+
+  // Wichtig: pointerdown kommt VOR click. Ohne dieses
+  // Stoppen würde der Schließer unten schon zumachen,
+  // und der click danach sofort wieder aufmachen -
+  // der Knopf ginge nie zu.
+  hilfeKnopf.addEventListener('pointerdown', function (event) {
+    event.stopPropagation();
+  });
+
+  // Klicks IM Fenster sollen es offen lassen -
+  // sonst könnte man nichts markieren oder kopieren
+  hilfeFenster.addEventListener('pointerdown', function (event) {
+    event.stopPropagation();
+  });
+
+  // Irgendwo sonst hin: zu.
+  // pointerdown statt click, damit es auch dann schließt,
+  // wenn der Klick auf der Wand zum Ziehen wird und
+  // gar kein click mehr entsteht.
+  document.addEventListener('pointerdown', function () {
+    hilfeZeigen(false);
+  });
+
+  document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape') {
+      hilfeZeigen(false);
+    }
+  });
+}
 
 
 // ============================================

@@ -249,6 +249,110 @@ img {
   border-color: rgba(255, 255, 255, 0.6);
 }
 
+/* ============================================
+   Hilfe-Knopf rechts neben der Überschrift
+   ============================================ */
+.hilfeEcke {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+
+  /* MUSS hier stehen, nicht nur am Fenster darin:
+     Das transform oben macht diesen Kasten zu einem
+     eigenen Stapelraum. Ein z-index weiter innen wirkt
+     dann nur noch INNERHALB dieses Kastens und kann den
+     ganzen Kasten nicht mehr über die Wand heben.
+     Der Wert muss über .kopfleiste (200) liegen. */
+  z-index: 300;
+}
+
+.hilfeKnopf {
+  padding: 5px 14px;
+
+  background-color: rgba(0, 0, 0, 0.45);
+  color: #cfcdc5;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 999px;
+
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: bold;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.hilfeKnopf:hover,
+.hilfeKnopf[aria-expanded="true"] {
+  background-color: rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.6);
+}
+
+/* Optik bewusst wie ein Zettel: gleiche Farben,
+   gleicher Rahmen, gleicher Radius, gleicher Schatten.
+   Werte stammen aus .notiz - bitte gemeinsam ändern. */
+.hilfeFenster {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 10px);
+  z-index: 200;
+
+  width: 250px;
+  padding: 14px 16px;
+
+  background-color: #2b2b28;
+  color: #edebe4;
+  border: 1px solid #5a5952;
+  border-radius: 20px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+
+  font-size: 14px;
+  line-height: 1.45;
+  text-align: left;
+  cursor: default;
+}
+
+/* [hidden] wird von display:block überstimmt,
+   deshalb hier ausdrücklich ausblenden */
+.hilfeFenster[hidden] {
+  display: none;
+}
+
+.hilfeFenster p {
+  margin: 0;
+}
+
+.hilfeTitel {
+  margin-top: 12px !important;
+  font-weight: bold;
+  color: #ffffff;
+}
+
+.hilfeListe {
+  list-style: none;
+  margin: 8px 0 0 0;
+  padding: 0;
+
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.hilfeListe code {
+  display: inline-block;
+  padding: 3px 9px;
+
+  background-color: rgba(255, 255, 255, 0.08);
+  border: 1px solid #5a5952;
+  border-radius: 999px;
+
+  font-family: inherit;
+  font-size: 13px;
+  color: #edebe4;
+}
+
+
 .wandTitel {
   font-weight: bold;
 }
@@ -298,6 +402,13 @@ img {
     position: static;
     transform: none;
     justify-content: flex-start;
+  }
+
+  /* Untereinander steht die Überschrift ganz oben -
+     der Hilfeknopf gehört daneben, nicht in die Mitte */
+  .hilfeEcke {
+    top: 0;
+    transform: none;
   }
 }
 

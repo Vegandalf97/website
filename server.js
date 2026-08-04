@@ -143,6 +143,12 @@ async function datenbankVorbereiten() {
   await pool.query(`ALTER TABLE zettel
     ADD COLUMN IF NOT EXISTS ebene INTEGER NOT NULL DEFAULT 0`);
 
+  // Drehung der Befehlsbilder in Grad (0-359).
+  // Ohne diese Spalte stünden die Köpfe nach jedem
+  // Neuladen wieder kerzengerade.
+  await pool.query(`ALTER TABLE zettel
+    ADD COLUMN IF NOT EXISTS winkel INTEGER NOT NULL DEFAULT 0`);
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS benutzer (
       id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -515,7 +521,7 @@ app.get('/api/zettel', async function (req, res) {
     const ich = req.benutzer ? req.benutzer.id : null;
 
     const ergebnis = await pool.query(
-      `SELECT id, name, nachricht, farbe, zeit, x, y, breite, hoehe, ebene,
+      `SELECT id, name, nachricht, farbe, zeit, x, y, breite, hoehe, ebene, winkel,
               (zeichnung IS NOT NULL) AS hat_zeichnung,
               (
                 $1::uuid IS NOT NULL
@@ -667,6 +673,7 @@ app.post('/api/zettel/:id/bewegt', function (req, res) {
     y: y,
     breite: breite,
     hoehe: hoehe,
+    winkel: zahlOderNull(req.body.winkel, 0, 359),
     sender: String(req.body.sender || '')
   });
 
@@ -680,6 +687,7 @@ app.patch('/api/zettel/:id/layout', async function (req, res) {
   const y = zahlOderNull(req.body.y, 0, MAX_Y);
   const breite = zahlOderNull(req.body.breite, MIN_BREITE, MAX_BREITE);
   const hoehe = zahlOderNull(req.body.hoehe, MIN_HOEHE, MAX_HOEHE);
+  const winkel = zahlOderNull(req.body.winkel, 0, 359);
 
   try {
     const aktuell = await wandPflegen();
@@ -706,12 +714,13 @@ app.patch('/api/zettel/:id/layout', async function (req, res) {
                        THEN LEAST(COALESCE($4, hoehe), $7 + length(nachricht) * $9)
                        ELSE COALESCE($4, hoehe)
                   END,
+         winkel = COALESCE($11, winkel),
          ebene = (SELECT COALESCE(MAX(ebene), 0) + 1 FROM zettel WHERE wand_id = $10)
        WHERE id = $5
-       RETURNING id, x, y, breite, hoehe, ebene`,
+       RETURNING id, x, y, breite, hoehe, ebene, winkel`,
       [x, y, breite, hoehe, req.params.id,
        GUARD_BREITE, GUARD_HOEHE, BREITE_PRO_ZEICHEN, HOEHE_PRO_ZEICHEN,
-       aktuell.id]
+       aktuell.id, winkel]
     );
 
     alleBenachrichtigen();
