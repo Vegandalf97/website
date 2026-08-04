@@ -38,6 +38,10 @@ const BILD_MAX_HOEHE = 700;
 // kein Löschknopf, keine Größenänderung
 const BILD_RAND = 0;
 
+// Alle Befehlsbilder werden gleich breit dargestellt,
+// unabhängig davon, wie groß die Bilddatei ist
+const BEFEHL_BREITE = 200;
+
 // Höhe der Knopfzeile beim Schreiben einer neuen Notiz.
 // Muss zu .notizAbschluss in style.css passen.
 const KNOPF_ZEILE = 40;
@@ -199,11 +203,13 @@ function ansichtAnwenden() {
   // wieder die Seite scrollen. "pan-y" überlässt dem Browser
   // nur das senkrechte Scrollen; das Zoomen mit zwei Fingern
   // bleibt bei uns.
-  const kannSchieben =
-    (sichtbareBreite - rahmen.clientWidth > RUHE) ||
-    (sichtbareHoehe - rahmen.clientHeight > RUHE);
+  const kannWaagerecht = sichtbareBreite - rahmen.clientWidth > RUHE;
+  const kannSenkrecht = sichtbareHoehe - rahmen.clientHeight > RUHE;
 
-  rahmen.style.touchAction = kannSchieben ? 'none' : 'pan-y';
+  // Nur wenn es senkrecht wirklich etwas zu verschieben gibt,
+  // nehmen wir dem Browser das Scrollen weg. Sonst bleiben
+  // Bereiche übrig, in denen der Finger nichts bewirkt.
+  rahmen.style.touchAction = kannSenkrecht ? 'none' : 'pan-y';
 }
 
 
@@ -1093,7 +1099,12 @@ function anzeigen() {
       }
     }
 
-    const breite = begrenzen(eintrag.breite, MIN_BREITE, maxBreite);
+    // Befehlsbilder immer gleich breit - egal was in der
+    // Datenbank steht. Sonst wären /merz und /trump je nach
+    // Bildgröße unterschiedlich groß.
+    const breite = nurBild
+      ? BEFEHL_BREITE
+      : begrenzen(eintrag.breite, MIN_BREITE, maxBreite);
 
     const notiz = document.createElement('div');
     notiz.className = 'notiz ' + eintrag.farbe

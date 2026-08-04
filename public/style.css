@@ -344,7 +344,12 @@ button:hover {
 
   overflow: hidden;
   border-radius: 10px;
-  background-color: rgba(0, 0, 0, 0.10);
+
+  /* Durchsichtig: Wo die Wand nicht hinreicht, soll nur
+     der Seitenhintergrund zu sehen sein - keine graue
+     Fläche, die wie ein toter Bereich wirkt. */
+  background-color: transparent;
+
   touch-action: none;
 }
 
