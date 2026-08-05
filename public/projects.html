@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Projects</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+  <header class="kopfleiste">
+
+    <div class="konto" id="konto"></div>
+
+    <nav class="navi">
+      <a href="/index.html">Wall of notes</a>
+      <a href="/projects.html" class="aktiv">Projects</a>
+      <a href="/about.html">About me</a>
+    </nav>
+
+  </header>
+
+  <h1>Projects</h1>
+
+  <div class="projekte">
+
+    <!-- ===== Polidesk ===== -->
+    <article class="projektKarte">
+
+      <!-- Kopfbereich der Karte: dunkle Fläche mit dem Leitsatz -->
+      <div class="projektBuehne">
+        <div class="buehneSchirm">
+          <p class="buehneText">
+            Things I build to teach myself how software actually works. <3
+          </p>
+        </div>
+      </div>
+
+      <div class="projektInhalt">
+
+        <div class="projektKopf">
+          <h2>Polidesk</h2>
+          <span class="projektStatus">In development · v0.1.0</span>
+        </div>
+
+        <p class="projektClaim">
+          A little colleague for your screen. Polidesk sits at a desk in the
+          bottom-right corner and keeps working while you do.
+        </p>
+
+        <p class="projektText">
+          A Windows desktop app built with Electron.
+        </p>
+
+        <h3 class="projektUnterTitel">Highlights</h3>
+
+        <ul class="projektListe">
+          <li>Transparent, frameless window pinned above all others</li>
+          <li>Drag the character anywhere, send it home from the tray menu</li>
+          <li>Stays visible across workspaces and full-screen apps</li>
+          <li>Portable <code>.exe</code></li>
+        </ul>
+
+        <!-- Getrennt von den Highlights: Was schon läuft und
+             was erst kommt, darf nicht in einer Liste stehen. -->
+        <h3 class="projektUnterTitel">Coming next</h3>
+
+        <ul class="projektListe projektListeGeplant">
+          <li>Head skins to choose from</li>
+          <li>Items you can throw at the character</li>
+          <li>A range of desks to work at</li>
+          <li>Characters that react to you more directly</li>
+        </ul>
+
+        <h3 class="projektUnterTitel">Built with</h3>
+
+        <ul class="projektTechnik">
+          <li>Electron 31</li>
+          <li>Node.js</li>
+          <li>IPC &amp; contextBridge</li>
+          <li>electron-builder</li>
+          <li>HTML / CSS / JS</li>
+        </ul>
+
+
+        <div class="projektLinks">
+          <a class="projektLink projektLinkStark"
+             href="https://github.com/Vegandalf97/polidesk"
+             target="_blank" rel="noopener">View on GitHub</a>
+        </div>
+
+      </div>
+    </article>
+
+  </div>
+
+  <script src="/konto.js"></script>
+
+</body>
+</html>

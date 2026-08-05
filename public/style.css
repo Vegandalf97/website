@@ -1005,6 +1005,252 @@ button:hover {
 
 
 /* ============================================
+   PROJEKTE
+   Die Karten übernehmen die Optik der Zettel:
+   #2b2b28, Rahmen #5a5952, Radius 20px.
+   Werte stammen aus .notiz - gemeinsam ändern.
+   ============================================ */
+.projekte {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+
+  max-width: 900px;
+  margin: 0 auto 60px auto;
+}
+
+.projektKarte {
+  display: flex;
+  flex-direction: column;
+
+  background-color: #2b2b28;
+  color: #edebe4;
+  border: 1px solid #5a5952;
+  border-radius: 20px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+
+  /* Die Bühne oben ragt sonst über die runden Ecken hinaus */
+  overflow: hidden;
+}
+
+
+/* ===== Kleine Bildschirm-Grafik, rein aus CSS =====
+   Stellt dar, was die App tut: Figur unten rechts
+   auf dem Bildschirm, über allem anderen. */
+.projektBuehne {
+  padding: 26px 26px 0 26px;
+  background: linear-gradient(180deg,
+              rgba(255, 255, 255, 0.05),
+              rgba(255, 255, 255, 0));
+}
+
+.buehneSchirm {
+  /* Die Höhe ergibt sich aus dem Satz - keine feste Angabe,
+     sonst läuft der Text auf schmalen Geräten heraus */
+  padding: 30px 30px 32px 30px;
+
+  border: 1px solid #5a5952;
+  border-bottom: none;
+  border-radius: 12px 12px 0 0;
+
+  background:
+    radial-gradient(120% 90% at 20% 0%,
+                    rgba(120, 150, 255, 0.18), transparent 60%),
+    #14140f;
+}
+
+.buehneText {
+  margin: 0;
+  max-width: 50ch;
+  color: #edebe4;
+  font-size: clamp(1rem, 2.4vw, 1.25rem);
+  line-height: 1.5;
+}
+
+
+/* ===== Textteil der Karte ===== */
+.projektInhalt {
+  padding: 24px 26px 26px 26px;
+}
+
+.projektKopf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.projektKopf h2 {
+  margin: 0;
+  color: #ffffff;
+  font-size: clamp(1.35rem, 4vw, 1.75rem);
+}
+
+.projektStatus {
+  padding: 3px 10px;
+
+  background-color: rgba(74, 222, 128, 0.12);
+  color: #86efac;
+  border: 1px solid rgba(74, 222, 128, 0.4);
+  border-radius: 999px;
+
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.projektClaim {
+  margin: 0 0 14px 0;
+  color: #ffffff;
+  font-size: 17px;
+  line-height: 1.5;
+}
+
+.projektText {
+  margin: 0;
+  max-width: 62ch;
+  color: #c9c7bf;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.projektUnterTitel {
+  margin: 24px 0 10px 0;
+  color: #a8a69e;
+  font-size: 12px;
+  font-weight: bold;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.projektListe {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  display: grid;
+  gap: 8px;
+}
+
+.projektListe li {
+  position: relative;
+  padding-left: 20px;
+  color: #c9c7bf;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+/* Häkchen als Pseudo-Element: gehört zur Gestaltung,
+   nicht in den Text - Screenreader lesen es nicht mit */
+.projektListe li::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 8px;
+
+  width: 7px;
+  height: 7px;
+  background-color: #4ade80;
+  border-radius: 50%;
+}
+
+/* Geplantes: hohler Punkt statt gefüllter, gedämpfte Schrift.
+   So ist auf einen Blick klar, was noch nicht fertig ist -
+   ohne dass an jeder Zeile "geplant" stehen muss. */
+.projektListeGeplant li {
+  color: #a8a69e;
+}
+
+.projektListeGeplant li::before {
+  background-color: transparent;
+  border: 1px solid #85837b;
+}
+
+.projektListe code {
+  padding: 1px 6px;
+  background-color: rgba(255, 255, 255, 0.08);
+  border-radius: 5px;
+  font-family: inherit;
+  font-size: 14px;
+}
+
+.projektTechnik {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.projektTechnik li {
+  padding: 5px 12px;
+
+  background-color: rgba(255, 255, 255, 0.07);
+  color: #dedcd4;
+  border: 1px solid #5a5952;
+  border-radius: 999px;
+
+  font-size: 13px;
+}
+
+.projektRolle {
+  margin: 22px 0 0 0;
+  color: #85837b;
+  font-size: 13px;
+  font-style: italic;
+}
+
+.projektLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.projektLink {
+  padding: 9px 18px;
+
+  background-color: rgba(0, 0, 0, 0.35);
+  color: #dedcd4;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 999px;
+
+  font-size: 14px;
+  text-decoration: none;
+}
+
+.projektLink:hover {
+  background-color: rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.6);
+}
+
+.projektLinkStark {
+  background-color: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  font-weight: bold;
+}
+
+
+@media (max-width: 700px) {
+
+  .projektBuehne {
+    padding: 18px 18px 0 18px;
+  }
+
+  .buehneSchirm {
+    padding: 22px 20px 24px 20px;
+  }
+
+  .projektInhalt {
+    padding: 20px 18px 22px 18px;
+  }
+}
+
+
+/* ============================================
    AB 600px
    ============================================ */
 @media (min-width: 600px) {

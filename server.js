@@ -334,6 +334,21 @@ async function benutzerLaden(req, res, next) {
 }
 
 app.use(benutzerLaden);
+
+// ===== Alte Seitennamen weiterleiten =====
+// Wer noch ein Lesezeichen auf galerie.html hat oder den Link
+// irgendwo weitergegeben hat, soll keine Fehlerseite bekommen.
+// 301 heißt "dauerhaft umgezogen": Browser und Suchmaschinen
+// merken sich die neue Adresse und fragen die alte nicht mehr.
+const UMGEZOGEN = {
+  '/galerie.html': '/projects.html',
+  '/ueber.html': '/about.html'
+};
+
+app.get(Object.keys(UMGEZOGEN), function (req, res) {
+  res.redirect(301, UMGEZOGEN[req.path]);
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 
